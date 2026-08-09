@@ -7,6 +7,19 @@ A CLI to manage Jira tickets locally. Tickets are fetched from the Jira REST API
 - Go 1.26+
 - A Jira Cloud account with API token access
 
+## Install
+
+```sh
+./install.sh              # install to ~/.local/bin
+PREFIX=/usr/local ./install.sh   # install to /usr/local/bin (requires sudo)
+```
+
+The script builds the binary into `bin/`, copies it to a directory on `PATH` (default `~/.local/bin`), and installs `config/config.yaml` to `~/.config/xynapse/config.yaml` on first run. Add to your shell rc if `~/.local/bin` is not on `PATH`:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 ## Configuration
 
 Copy the config and set your credentials. Edit `config/config.yaml`:
@@ -37,6 +50,8 @@ Credentials are resolved from (highest priority first):
 3. Values in `config/config.yaml`
 
 > `.env` is gitignored — never commit it.
+
+Config is loaded from `config/config.yaml` when present in the project root, otherwise from `~/.config/xynapse/config.yaml` (so the globally installed binary works from anywhere). Set `XYNAPSE_STORAGE` to override the storage directory.
 
 ## Build
 

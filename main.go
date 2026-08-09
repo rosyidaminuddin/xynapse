@@ -4,12 +4,37 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"xynapse/internal/command"
 	"xynapse/internal/config"
 )
+
+// configDir returns the per-user config directory for xynapse.
+func configDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "xynapse"), nil
+}
+
+// resolveConfigPaths picks the config and env files to load. It prefers the
+// project-local files (config/config.yaml and .env) when present, and falls
+// back to the per-user directory (~/.config/xynapse/) so the globally
+// installed binary works from anywhere.
+func resolveConfigPaths() (configPath, envPath string) {
+	if _, err := os.Stat("config/config.yaml"); err == nil {
+		return "config/config.yaml", ".env"
+	}
+	dir, err := configDir()
+	if err == nil {
+		return filepath.Join(dir, "config.yaml"), filepath.Join(dir, ".env")
+	}
+	return "config/config.yaml", ".env"
+}
 
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
@@ -35,7 +60,8 @@ so get commands can read them without hitting the server.`,
 			}
 			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
-			loaded, err := config.Load("config/config.yaml", ".env")
+			configPath, envPath := resolveConfigPaths()
+			loaded, err := config.Load(configPath, envPath)
 			if err != nil {
 				return err
 			}
@@ -44,6 +70,10 @@ so get commands can read them without hitting the server.`,
 
 			if project != "" {
 				cfg.Defaults.Project = project
+			}
+
+			if dir := os.Getenv("XYNAPSE_STORAGE"); dir != "" {
+				cfg.Storage.Base = dir
 			}
 
 			return cfg.Validate()
