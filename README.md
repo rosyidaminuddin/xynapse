@@ -14,7 +14,7 @@ A CLI to manage Jira tickets locally. Tickets are fetched from the Jira REST API
 PREFIX=/usr/local ./install.sh   # install to /usr/local/bin (requires sudo)
 ```
 
-The script builds the binary into `bin/`, copies it to a directory on `PATH` (default `~/.local/bin`), and installs `config/config.yaml` to `~/.config/xynapse/config.yaml` on first run. Add to your shell rc if `~/.local/bin` is not on `PATH`:
+The script builds the binary into `bin/`, copies it to a directory on `PATH` (default `~/.local/bin`), and installs the example config to `~/.config/xynapse/config.yaml` on first run. Add to your shell rc if `~/.local/bin` is not on `PATH`:
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
@@ -22,7 +22,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## Configuration
 
-Copy the config and set your credentials. Edit `config/config.yaml`:
+Config is always loaded from `~/.config/xynapse/` — never from project files. Edit `~/.config/xynapse/config.yaml`:
 
 ```yaml
 jira:
@@ -46,12 +46,12 @@ expiration:
 Credentials are resolved from (highest priority first):
 
 1. Environment variables `JIRA_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
-2. A `.env` file in the project root (same variable names)
-3. Values in `config/config.yaml`
+2. A `.env` file in `~/.config/xynapse/` (same variable names)
+3. Values in `~/.config/xynapse/config.yaml`
 
-> `.env` is gitignored — never commit it.
+> Never commit credentials. `~/.config/xynapse/` is per-user and not shared.
 
-Config is loaded from `config/config.yaml` when present in the project root, otherwise from `~/.config/xynapse/config.yaml` (so the globally installed binary works from anywhere). Set `XYNAPSE_STORAGE` to override the storage directory.
+Set `XYNAPSE_CONFIG_DIR` to override the config directory and `XYNAPSE_STORAGE` to override the storage directory.
 
 ## Build
 
@@ -102,6 +102,7 @@ go test ./...
 - `-v`, `--verbose` — log every step to stderr
 - `-p`, `--project <KEY>` — override the default project for this invocation
 - `-t`, `--type <types>` — comma-separated issue types (e.g. `Story,Bug,Epic`). For `pull-sprint` it is applied as a JQL `issuetype in (...)` filter on the server; for `get-sprint` it filters the locally cached tickets.
+- `-o`, `--output <format>` — output format for `get-ticket`: `table`, `json`, or `yaml` (overrides config)
 
 ### Cache expiration
 

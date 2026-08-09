@@ -9,7 +9,7 @@ import (
 	"xynapse/internal/storage"
 )
 
-func GetTicket(cfg *config.Config, ticketRef string) error {
+func GetTicket(cfg *config.Config, ticketRef, format string) error {
 	project, number, err := ParseTicketRef(ticketRef, cfg.Defaults.Project)
 	if err != nil {
 		return err
@@ -35,7 +35,10 @@ func GetTicket(cfg *config.Config, ticketRef string) error {
 		}
 	}
 
-	if err := printTickets(cfg.Defaults.OutputFormat, []*models.Ticket{ticket}); err != nil {
+	if format == "" {
+		format = cfg.Defaults.OutputFormat
+	}
+	if err := printTickets(format, []*models.Ticket{ticket}); err != nil {
 		return fmt.Errorf("failed to print ticket: %w", err)
 	}
 	return nil

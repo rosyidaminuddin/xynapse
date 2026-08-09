@@ -12,28 +12,18 @@ import (
 	"xynapse/internal/config"
 )
 
-// configDir returns the per-user config directory for xynapse.
-func configDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+// configPaths returns the per-user config and env file paths for xynapse.
+// Config is always loaded from ~/.config/xynapse/, never from project files.
+func configPaths() (configPath, envPath string) {
+	dir := os.Getenv("XYNAPSE_CONFIG_DIR")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", ""
+		}
+		dir = filepath.Join(home, ".config", "xynapse")
 	}
-	return filepath.Join(home, ".config", "xynapse"), nil
-}
-
-// resolveConfigPaths picks the config and env files to load. It prefers the
-// project-local files (config/config.yaml and .env) when present, and falls
-// back to the per-user directory (~/.config/xynapse/) so the globally
-// installed binary works from anywhere.
-func resolveConfigPaths() (configPath, envPath string) {
-	if _, err := os.Stat("config/config.yaml"); err == nil {
-		return "config/config.yaml", ".env"
-	}
-	dir, err := configDir()
-	if err == nil {
-		return filepath.Join(dir, "config.yaml"), filepath.Join(dir, ".env")
-	}
-	return "config/config.yaml", ".env"
+	return filepath.Join(dir, "config.yaml"), filepath.Join(dir, ".env")
 }
 
 func main() {
@@ -60,7 +50,7 @@ so get commands can read them without hitting the server.`,
 			}
 			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
-			configPath, envPath := resolveConfigPaths()
+			configPath, envPath := configPaths()
 			loaded, err := config.Load(configPath, envPath)
 			if err != nil {
 				return err
@@ -119,14 +109,17 @@ func newPullSprintCmd(cfg *config.Config) *cobra.Command {
 }
 
 func newGetTicketCmd(cfg *config.Config) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "get-ticket <ticket-number|key|url>",
 		Short: "read a ticket from local yaml",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return command.GetTicket(cfg, args[0])
+			format, _ := cmd.Flags().GetString("output")
+			return command.GetTicket(cfg, args[0], format)
 		},
 	}
+	cmd.Flags().StringP("output", "o", "", "output format: table, json, or yaml (overrides config)")
+	return cmd
 }
 
 func newGetSprintCmd(cfg *config.Config) *cobra.Command {

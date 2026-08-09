@@ -7,13 +7,13 @@ jira:
 
 # Default CLI Preferences
 defaults:
-  project: "MERADIO"              # Fallback project key if omitted in commands
-  board_id: "561"                 # Optional default board ID for sprint queries
+  project: ""              # Fallback project key if omitted in commands
+  board_id: ""                 # Optional default board ID for sprint queries
   output_format: "table"       # Terminal output style: table, json, or yaml
 
 # Local Storage Settings
 storage:
-  base: "storage"
+  base: "~/.storage/xyanpse"
 
 # Cache Expiration (hours)
 # When a locally cached ticket or sprint is older than this, get commands

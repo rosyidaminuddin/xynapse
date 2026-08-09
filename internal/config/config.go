@@ -10,11 +10,11 @@ import (
 )
 
 type Config struct {
-	Jira       JiraConfig      `yaml:"jira"`
-	Defaults   Defaults        `yaml:"defaults"`
-	Storage    StorageConfig   `yaml:"storage"`
-	Expiration Expiration      `yaml:"expiration"`
-	Verbose    bool            `yaml:"-"`
+	Jira       JiraConfig    `yaml:"jira"`
+	Defaults   Defaults      `yaml:"defaults"`
+	Storage    StorageConfig `yaml:"storage"`
+	Expiration Expiration    `yaml:"expiration"`
+	Verbose    bool          `yaml:"-"`
 }
 
 type JiraConfig struct {
@@ -71,6 +71,12 @@ func Load(path, envPath string) (*Config, error) {
 	if v := os.Getenv("JIRA_API_TOKEN"); v != "" {
 		cfg.Jira.APIToken = v
 	}
+	if v := os.Getenv("JIRA_BOARD_ID"); v != "" {
+		cfg.Defaults.BoardID = v
+	}
+	if v := os.Getenv("JIRA_PROJECT"); v != "" {
+		cfg.Defaults.Project = v
+	}
 
 	if cfg.Jira.TimeoutSeconds == 0 {
 		cfg.Jira.TimeoutSeconds = 15
@@ -88,13 +94,13 @@ func Load(path, envPath string) (*Config, error) {
 // Validate checks that required configuration is present before any command runs.
 func (c *Config) Validate() error {
 	if c.Jira.URL == "" {
-		return fmt.Errorf("config error: jira.url is required (set it in config/config.yaml or JIRA_URL)")
+		return fmt.Errorf("config error: jira.url is required (set it in ~/.config/xynapse/config.yaml or JIRA_URL)")
 	}
 	if c.Jira.Email == "" {
-		return fmt.Errorf("config error: jira.email is required (set it in config/config.yaml or JIRA_EMAIL)")
+		return fmt.Errorf("config error: jira.email is required (set it in ~/.config/xynapse/config.yaml or JIRA_EMAIL)")
 	}
 	if c.Jira.APIToken == "" {
-		return fmt.Errorf("config error: jira.api_token is required (set it in config/config.yaml or JIRA_API_TOKEN)")
+		return fmt.Errorf("config error: jira.api_token is required (set it in ~/.config/xynapse/config.yaml or JIRA_API_TOKEN)")
 	}
 	if c.Defaults.Project == "" {
 		return fmt.Errorf("config error: defaults.project is required")
