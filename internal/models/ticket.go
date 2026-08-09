@@ -9,14 +9,24 @@ import (
 // SprintManifest records the active sprint tickets metadata and index[cite: 1]
 type SprintManifest struct {
 	Project    string    `yaml:"project"`
+	SprintID   int       `yaml:"sprint_id,omitempty"`
+	SprintName string    `yaml:"sprint_name,omitempty"`
 	FetchedAt  time.Time `yaml:"fetched_at"`
 	TicketKeys []string  `yaml:"ticket_keys"`
+}
+
+// Sprint is the agile sprint metadata returned by the Jira Agile API.
+type Sprint struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	State string `json:"state"`
 }
 
 type Ticket struct {
 	ID          string    `yaml:"id"`
 	Key         string    `yaml:"key"`
 	Project     string    `yaml:"project"`
+	Type        string    `yaml:"type,omitempty"`
 	Summary     string    `yaml:"summary"`
 	Status      string    `yaml:"status"`
 	Assignee    string    `yaml:"assignee"`
@@ -31,7 +41,10 @@ type JiraRawIssue struct {
 	Fields struct {
 		Summary     string          `json:"summary"`
 		Description json.RawMessage `json:"description"`
-		Project     struct {
+		Issuetype   struct {
+			Name string `json:"name"`
+		} `json:"issuetype"`
+		Project struct {
 			Key string `json:"key"`
 		} `json:"project"`
 		Status struct {
@@ -52,7 +65,8 @@ func MapRawToTicket(raw *JiraRawIssue) *Ticket {
 	}
 
 	// Parse string into time.Time
-	updatedAt, err := time.Parse(time.RFC3339, raw.Fields.Updated)
+	layout := "2006-01-02T15:04:05.999Z0700"
+	updatedAt, err := time.Parse(layout, raw.Fields.Updated)
 	if err != nil {
 		fmt.Printf("Error parsing updated time: %v\n", err)
 		updatedAt = time.Now().UTC()
@@ -67,6 +81,7 @@ func MapRawToTicket(raw *JiraRawIssue) *Ticket {
 		ID:          raw.ID,
 		Key:         raw.Key,
 		Project:     raw.Fields.Project.Key,
+		Type:        raw.Fields.Issuetype.Name,
 		Summary:     raw.Fields.Summary,
 		Status:      raw.Fields.Status.Name,
 		Assignee:    assignee,

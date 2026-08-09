@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"xynapse/internal/command"
 	"xynapse/internal/config"
@@ -15,13 +16,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	args := os.Args[1:]
 	var verbose bool
+	var types []string
 	var positional []string
-	for _, a := range args {
-		switch a {
-		case "-v", "--verbose":
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-v" || a == "--verbose":
 			verbose = true
+		case a == "-t" || a == "--type":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "error: flag -t/--type requires a value")
+				os.Exit(1)
+			}
+			i++
+			types = splitTypes(args[i])
+		case strings.HasPrefix(a, "--type="):
+			types = splitTypes(strings.TrimPrefix(a, "--type="))
+		case strings.HasPrefix(a, "-t="):
+			types = splitTypes(strings.TrimPrefix(a, "-t="))
 		default:
 			positional = append(positional, a)
 		}
@@ -41,7 +55,7 @@ func main() {
 		}
 		err = command.PullTicket(cfg, positional[1])
 	case "pull-sprint":
-		err = command.PullSprint(cfg)
+		err = command.PullSprint(cfg, types)
 	case "get-ticket":
 		if len(positional) < 2 {
 			fmt.Fprintln(os.Stderr, "usage: xynapse get-ticket <ticket-number>")
@@ -49,7 +63,7 @@ func main() {
 		}
 		err = command.GetTicket(cfg, positional[1])
 	case "get-sprint":
-		err = command.GetSprint(cfg)
+		err = command.GetSprint(cfg, types)
 	case "help", "-h", "--help":
 		usage()
 		return
@@ -65,15 +79,29 @@ func main() {
 	}
 }
 
+// splitTypes splits a comma-separated type list into trimmed non-empty values.
+func splitTypes(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func usage() {
 	fmt.Println(`xynapse - manage Jira tickets locally
 
 usage:
   xynapse [-v] pull-ticket <ticket-number>   fetch a ticket from Jira and write it as yaml
-  xynapse [-v] pull-sprint                    fetch all tickets in the current sprint for the current user
+  xynapse [-v] [-t <type>] pull-sprint        fetch all tickets in the current sprint for the current user
   xynapse [-v] get-ticket <ticket-number>     read a ticket from local yaml
-  xynapse [-v] get-sprint                     list all tickets from the active sprint
+  xynapse [-v] [-t <type>] get-sprint         list all tickets from the active sprint
 
 flags:
-  -v, --verbose   log every step to stderr`)
+  -v, --verbose           log every step to stderr
+  -t, --type <types>      comma-separated issue types to filter by (e.g. Story,Bug,Epic)`)
 }

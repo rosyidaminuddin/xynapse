@@ -49,11 +49,17 @@ go build -o bin/xynapse .
 # Fetch all tickets in the current sprint for the current user
 ./bin/xynapse pull-sprint
 
+# Fetch only Story and Bug tickets from the current sprint
+./bin/xynapse pull-sprint -t Story,Bug
+
 # Read a ticket from local YAML (no server call)
 ./bin/xynapse get-ticket 123
 
 # List all tickets from the active sprint from local YAML
 ./bin/xynapse get-sprint
+
+# List only Epic tickets from the active sprint
+./bin/xynapse get-sprint -t Epic
 ```
 
 All commands accept `-v` (or `--verbose`) to log every step to stderr:
@@ -62,7 +68,9 @@ All commands accept `-v` (or `--verbose`) to log every step to stderr:
 ./bin/xynapse -v pull-ticket 123
 ```
 
-Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`.
+The `-t`/`--type` flag takes a comma-separated list of issue types (e.g. `Story,Bug,Epic`). For `pull-sprint` it is applied as a JQL `issuetype in (...)` filter on the server; for `get-sprint` it filters the locally cached tickets.
+
+Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`. When `board_id` is configured, `pull-sprint` looks up the active sprint via the Jira Agile API and stores its `sprint_id` and `sprint_name` in the manifest.
 
 ## Help
 

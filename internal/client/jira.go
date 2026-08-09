@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"xynapse/internal/models"
@@ -61,6 +63,18 @@ func (c *JiraClient) do(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	c.logf("response status %d", resp.StatusCode)
+
+	if c.verbose {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		c.logf("response body: %s", string(body))
+	}
+
 	return resp, nil
 }
 
@@ -96,10 +110,58 @@ func (c *JiraClient) FetchTicket(project string, ticketNum string) (*models.Tick
 	return ticket, nil
 }
 
+// FetchActiveSprint returns the current active sprint for a board via the Agile API.
+func (c *JiraClient) FetchActiveSprint(boardID string) (*models.Sprint, error) {
+	endpoint := fmt.Sprintf("%s/rest/agile/1.0/board/%s/sprint?state=active", c.baseURL, boardID)
+
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	c.applyHeaders(req)
+
+	c.logf("fetching active sprint for board %s", boardID)
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, fmt.Errorf("network error fetching active sprint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Values []models.Sprint `json:"values"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse sprint JSON: %w", err)
+	}
+
+	for i := range result.Values {
+		if result.Values[i].State == "active" {
+			return &result.Values[i], nil
+		}
+	}
+	return nil, fmt.Errorf("no active sprint found for board %s", boardID)
+}
+
 // FetchSprintTickets fetches all issues in the current active sprint assigned to the
-// authenticated user. Uses JQL so only open sprints for the user's projects are queried.
-func (c *JiraClient) FetchSprintTickets(project string) ([]*models.Ticket, error) {
+// authenticated user, optionally filtered by issue type(s). Uses JQL so only open
+// sprints for the user's projects are queried.
+func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []string) ([]*models.Ticket, error) {
 	jql := fmt.Sprintf("project = %q AND sprint in openSprints() AND assignee = currentUser()", project)
+	if sprintID > 0 {
+		jql = fmt.Sprintf("project = %q AND sprint = %d AND assignee = currentUser()", project, sprintID)
+	}
+	if len(types) > 0 {
+		quoted := make([]string, len(types))
+		for i, t := range types {
+			quoted[i] = fmt.Sprintf("%q", t)
+		}
+		jql += fmt.Sprintf(" AND issuetype in (%s)", strings.Join(quoted, ","))
+	}
 
 	var allIssues []models.JiraRawIssue
 	startAt := 0
@@ -108,6 +170,7 @@ func (c *JiraClient) FetchSprintTickets(project string) ([]*models.Ticket, error
 		params.Set("jql", jql)
 		params.Set("startAt", fmt.Sprintf("%d", startAt))
 		params.Set("maxResults", "50")
+		params.Set("fields", "summary, description, project, status, assignee, updated, id, key, issuetype")
 		endpoint := fmt.Sprintf("%s/rest/api/3/search?%s", c.baseURL, params.Encode())
 
 		req, err := http.NewRequest("GET", endpoint, nil)
