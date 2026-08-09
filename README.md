@@ -87,16 +87,16 @@ go test ./...
 # Read a ticket from local YAML (no server call)
 ./bin/xynapse get-ticket 123
 
-# List all tickets from the active sprint from local YAML
+# List all tickets from the active sprint from local YAML (PLAN column shows whether each has a saved plan)
 ./bin/xynapse get-sprint
 
 # List only Epic tickets from the active sprint
 ./bin/xynapse get-sprint -t Epic
 
-# Delete all locally cached tickets (prompts for confirmation)
+# Delete all locally cached tickets and plans (prompts for confirmation)
 ./bin/xynapse clear-cache
 
-# Delete the cached MERADIO tickets without prompting
+# Delete the cached MERADIO tickets and MERADIO plans without prompting
 ./bin/xynapse clear-cache -f -p MERADIO
 
 # Analyze a ticket and generate an implementation plan (saved to <storage>/plans/<KEY>.md)

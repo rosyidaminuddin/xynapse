@@ -1,6 +1,7 @@
 package command
 
 import (
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -129,5 +130,49 @@ func TestRenderMDPassthroughToFile(t *testing.T) {
 	}
 	if string(got) != md {
 		t.Errorf("file writer should pass through raw markdown, got:\n%q", string(got))
+	}
+}
+
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+	f()
+	w.Close()
+	out, _ := io.ReadAll(r)
+	return string(out)
+}
+
+func TestPrintSprintTicketsPlanStatus(t *testing.T) {
+	views := []SprintTicket{
+		{Ticket: &models.Ticket{Key: "PROJ-1", Status: "Open", Assignee: "A", Summary: "S1"}, Plan: true},
+		{Ticket: &models.Ticket{Key: "PROJ-2", Status: "Done", Assignee: "B", Summary: "S2"}, Plan: false},
+	}
+
+	table := captureStdout(t, func() {
+		if err := printSprintTickets("", views); err != nil {
+			t.Errorf("printSprintTickets: %v", err)
+		}
+	})
+	for _, want := range []string{"KEY", "PLAN", "yes", "no"} {
+		if !strings.Contains(table, want) {
+			t.Errorf("table missing %q:\n%s", want, table)
+		}
+	}
+
+	js := captureStdout(t, func() {
+		if err := printSprintTickets("json", views); err != nil {
+			t.Errorf("printSprintTickets json: %v", err)
+		}
+	})
+	for _, want := range []string{`"Key": "PROJ-1"`, `"plan": true`, `"plan": false`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("json missing %q:\n%s", want, js)
+		}
 	}
 }

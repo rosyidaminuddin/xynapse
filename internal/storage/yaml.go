@@ -55,6 +55,12 @@ func (s *Storage) GetPlanPath(project, ticketKey string) string {
 	return filepath.Join(s.base, "plans", fmt.Sprintf("%s.md", key))
 }
 
+// HasPlan reports whether a ticket has a saved implementation plan file.
+func (s *Storage) HasPlan(project, ticketKey string) bool {
+	_, err := os.Stat(s.GetPlanPath(project, ticketKey))
+	return err == nil
+}
+
 // WriteTicket serializes a single ticket model into local YAML.
 func (s *Storage) WriteTicket(ticket *models.Ticket) error {
 	filePath := s.getTicketPath(ticket.Project, ticket.Key)
@@ -166,37 +172,71 @@ func (s *Storage) ReadSprintTickets(project string) ([]*models.Ticket, error) {
 	return tickets, nil
 }
 
-// Clear removes cached tickets and sprint manifests. When project is empty,
-// the entire storage base is wiped; otherwise only that project's directory
-// is removed. Returns the number of files removed.
+// Clear removes cached tickets, sprint manifests, and implementation plans.
+// When project is empty, the entire storage base is wiped (including all
+// plans); otherwise only that project's tickets and its plan files
+// (<base>/plans/<PROJECT>-*.md) are removed. Returns the number of files
+// removed.
 func (s *Storage) Clear(project string) (int, error) {
-	var target string
-	if project == "" {
-		target = s.base
-	} else {
-		target = filepath.Join(s.base, strings.ToUpper(project))
+	project = strings.ToUpper(project)
+	removed := 0
+
+	target := s.base
+	if project != "" {
+		target = filepath.Join(s.base, project)
 	}
 
 	info, err := os.Stat(target)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			return 0, fmt.Errorf("failed to stat %s: %w", target, err)
+		}
+	} else {
+		if !info.IsDir() {
+			return 0, fmt.Errorf("cache path %s is not a directory", target)
+		}
+
+		entries, err := os.ReadDir(target)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read cache dir %s: %w", target, err)
+		}
+		for _, entry := range entries {
+			if err := os.RemoveAll(filepath.Join(target, entry.Name())); err != nil {
+				return 0, fmt.Errorf("failed to remove %s: %w", filepath.Join(target, entry.Name()), err)
+			}
+			removed++
+		}
+	}
+
+	plansRemoved, err := s.clearPlans(project)
+	if err != nil {
+		return removed, err
+	}
+	return removed + plansRemoved, nil
+}
+
+// clearPlans removes saved implementation plans. When project is empty the
+// whole plans directory is removed; otherwise only <PROJECT>-*.md files.
+func (s *Storage) clearPlans(project string) (int, error) {
+	plansDir := filepath.Join(s.base, "plans")
+	entries, err := os.ReadDir(plansDir)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return 0, nil
 		}
-		return 0, fmt.Errorf("failed to stat %s: %w", target, err)
-	}
-	if !info.IsDir() {
-		return 0, fmt.Errorf("cache path %s is not a directory", target)
+		return 0, fmt.Errorf("failed to read plans dir %s: %w", plansDir, err)
 	}
 
-	entries, err := os.ReadDir(target)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read cache dir %s: %w", target, err)
-	}
+	removed := 0
 	for _, entry := range entries {
-		if err := os.RemoveAll(filepath.Join(target, entry.Name())); err != nil {
-			return 0, fmt.Errorf("failed to remove %s: %w", filepath.Join(target, entry.Name()), err)
+		name := entry.Name()
+		if project != "" && !strings.HasPrefix(name, project+"-") {
+			continue
 		}
+		if err := os.RemoveAll(filepath.Join(plansDir, name)); err != nil {
+			return removed, fmt.Errorf("failed to remove plan %s: %w", filepath.Join(plansDir, name), err)
+		}
+		removed++
 	}
-
-	return len(entries), nil
+	return removed, nil
 }

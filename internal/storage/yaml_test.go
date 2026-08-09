@@ -195,3 +195,85 @@ func TestGetPlanPath(t *testing.T) {
 		t.Errorf("GetPlanPath = %q, want %q", got, want)
 	}
 }
+
+func TestHasPlan(t *testing.T) {
+	s := newTestStorage(t)
+	if s.HasPlan("PROJ", "PROJ-1") {
+		t.Error("HasPlan should be false before plan exists")
+	}
+	writePlan(t, s, "PROJ", "PROJ-1", "# plan")
+	if !s.HasPlan("PROJ", "PROJ-1") {
+		t.Error("HasPlan should be true after plan exists")
+	}
+}
+
+func writePlan(t *testing.T, s *Storage, project, key, content string) {
+	t.Helper()
+	path := s.GetPlanPath(project, key)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir plans: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+}
+
+func TestClearRemovesProjectPlans(t *testing.T) {
+	s := newTestStorage(t)
+	if err := s.WriteSprintManifest("A", 1, "S", []*models.Ticket{{Key: "A-1", Project: "A"}}); err != nil {
+		t.Fatalf("WriteSprintManifest: %v", err)
+	}
+	if err := s.WriteSprintManifest("B", 1, "S", []*models.Ticket{{Key: "B-1", Project: "B"}}); err != nil {
+		t.Fatalf("WriteSprintManifest: %v", err)
+	}
+	planA := s.GetPlanPath("A", "A-1")
+	planB := s.GetPlanPath("B", "B-1")
+	writePlan(t, s, "A", "A-1", "# A")
+	writePlan(t, s, "B", "B-1", "# B")
+
+	removed, err := s.Clear("a") // lowercase should still match
+	if err != nil {
+		t.Fatalf("Clear(A): %v", err)
+	}
+	if removed != 3 { // A-1.yml + sprints/ + A-1 plan
+		t.Errorf("removed = %d, want 3", removed)
+	}
+	if _, err := os.Stat(planA); !os.IsNotExist(err) {
+		t.Errorf("expected project A plan to be removed, err = %v", err)
+	}
+	if _, err := os.Stat(planB); err != nil {
+		t.Errorf("expected project B plan to remain: %v", err)
+	}
+	if s.HasPlan("A", "A-1") {
+		t.Error("HasPlan(A-1) should be false after Clear(A)")
+	}
+	if !s.HasPlan("B", "B-1") {
+		t.Error("HasPlan(B-1) should be true after Clear(A)")
+	}
+}
+
+func TestClearAllRemovesAllPlans(t *testing.T) {
+	s := newTestStorage(t)
+	if err := s.WriteSprintManifest("A", 1, "S", []*models.Ticket{{Key: "A-1", Project: "A"}}); err != nil {
+		t.Fatalf("WriteSprintManifest: %v", err)
+	}
+	writePlan(t, s, "A", "A-1", "# plan")
+
+	removed, err := s.Clear("")
+	if err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if removed != 2 { // A dir entry + A-1 plan
+		t.Errorf("removed = %d, want 2", removed)
+	}
+	if s.HasPlan("A", "A-1") {
+		t.Error("plan should be removed by Clear(\"\")")
+	}
+	entries, err := os.ReadDir(s.base)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("base dir not empty after Clear: %d entries", len(entries))
+	}
+}

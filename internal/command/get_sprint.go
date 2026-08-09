@@ -37,7 +37,15 @@ func GetSprint(cfg *config.Config, types []string) error {
 		logStep(cfg.Verbose, "filtered to %d ticket(s) of type(s) %v", len(tickets), types)
 	}
 
-	if err := printTickets(cfg.Defaults.OutputFormat, tickets); err != nil {
+	views := make([]SprintTicket, 0, len(tickets))
+	for _, ticket := range tickets {
+		views = append(views, SprintTicket{
+			Ticket: ticket,
+			Plan:   s.HasPlan(cfg.Defaults.Project, ticket.Key),
+		})
+	}
+
+	if err := printSprintTickets(cfg.Defaults.OutputFormat, views); err != nil {
 		return fmt.Errorf("failed to print sprint tickets: %w", err)
 	}
 	return nil

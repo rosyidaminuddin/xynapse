@@ -174,7 +174,7 @@ func newImplementCmd(cfg *config.Config) *cobra.Command {
 func newClearCacheCmd(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clear-cache",
-		Short: "delete locally cached tickets",
+		Short: "delete locally cached tickets and plans",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			project, _ := cmd.Root().PersistentFlags().GetString("project")
