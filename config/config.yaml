@@ -27,3 +27,10 @@ opencode:
   model: ""            # Optional provider/model override, e.g. "anthropic/claude-sonnet-4"
   auto_approve: false  # Pass --auto to opencode run (implement may edit files without prompting)
   dir: ""              # Target repo directory (default: current working directory)
+
+# Git Integration (used by prepare and finalize commands)
+git:
+  branch_template: "feature-v5/{Key}"  # Branch naming for prepare; see README for placeholders
+  branch_templates:                    # Optional per-issue-type overrides (case-insensitive)
+    Bug: "fix-v5/{Key}"
+    Epic: "epic/{Key}"
