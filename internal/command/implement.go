@@ -39,6 +39,7 @@ func Implement(cfg *config.Config, ticketRef, planPath, dir, model string) error
 		Model:       model,
 		AutoApprove: cfg.Opencode.AutoApprove,
 		Prompt:      prompt,
+		Stream:      os.Stderr,
 	})
 	if err != nil {
 		return err

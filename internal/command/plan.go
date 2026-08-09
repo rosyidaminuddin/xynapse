@@ -77,6 +77,7 @@ func Plan(cfg *config.Config, ticketRef, dir, model string) error {
 		Model:       model,
 		AutoApprove: false,
 		Prompt:      prompt,
+		Stream:      os.Stderr,
 	})
 	if err != nil {
 		return err

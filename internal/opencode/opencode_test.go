@@ -1,6 +1,8 @@
 package opencode
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -134,5 +136,82 @@ exit 3
 	}
 	if !strings.Contains(err.Error(), "boom") {
 		t.Errorf("error should include stderr, got %v", err)
+	}
+}
+
+func TestRunStreamsToolActivityAndReturnsOutput(t *testing.T) {
+	dir := t.TempDir()
+	outputFile := filepath.Join(dir, "output.json")
+	writeFakeBin(t, dir, `#!/bin/sh
+cat "$FAKE_OUTPUT_FILE"
+`)
+	t.Setenv("FAKE_OUTPUT_FILE", outputFile)
+	if err := os.WriteFile(outputFile, []byte(`{"type":"step_start","part":{"id":"s1","type":"step-start"}}
+{"type":"tool_use","part":{"id":"t1","type":"tool","tool":"bash","state":{"status":"running","title":"echo hello"}}}
+{"type":"tool_use","part":{"id":"t1","type":"tool","tool":"bash","state":{"status":"completed","title":"echo hello"}}}
+{"type":"tool_use","part":{"id":"t2","type":"tool","tool":"read","state":{"status":"running","title":"internal/command/plan.go"}}}
+{"type":"text","part":{"id":"m1","type":"text","text":"done"}}
+{"type":"step_finish","part":{"id":"s2","type":"step-finish"}}
+`), 0o644); err != nil {
+		t.Fatalf("write output: %v", err)
+	}
+
+	var live bytes.Buffer
+	out, err := Run(Options{Bin: "opencode", Prompt: "x", Stream: &live})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	got := live.String()
+	for _, want := range []string{"[bash] echo hello", "[read] internal/command/plan.go"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("live stream missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Count(got, "[bash] echo hello") != 1 {
+		t.Errorf("tool part should be printed once, got:\n%s", got)
+	}
+	if strings.Contains(got, "done") {
+		t.Errorf("assistant text should not be streamed, got:\n%s", got)
+	}
+
+	if text := ExtractText(out); text != "done" {
+		t.Errorf("ExtractText = %q, want %q", text, "done")
+	}
+}
+
+func TestRunStreamsStderr(t *testing.T) {
+	dir := t.TempDir()
+	outputFile := filepath.Join(dir, "output.json")
+	writeFakeBin(t, dir, `#!/bin/sh
+echo "opencode progress" >&2
+cat "$FAKE_OUTPUT_FILE"
+`)
+	t.Setenv("FAKE_OUTPUT_FILE", outputFile)
+	if err := os.WriteFile(outputFile, []byte(`{"type":"text","part":{"type":"text","text":"ok"}}`), 0o644); err != nil {
+		t.Fatalf("write output: %v", err)
+	}
+
+	stderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = stderr }()
+
+	out, err := Run(Options{Bin: "opencode", Prompt: "x", Stream: io.Discard})
+	w.Close()
+	os.Stderr = stderr
+
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if ExtractText(out) != "ok" {
+		t.Errorf("ExtractText = %q, want ok", ExtractText(out))
+	}
+	forwarded, _ := io.ReadAll(r)
+	if !strings.Contains(string(forwarded), "opencode progress") {
+		t.Errorf("stderr should be forwarded, got %q", string(forwarded))
 	}
 }
