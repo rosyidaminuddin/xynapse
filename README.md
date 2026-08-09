@@ -56,6 +56,12 @@ go build -o bin/xynapse .
 ./bin/xynapse get-sprint
 ```
 
+All commands accept `-v` (or `--verbose`) to log every step to stderr:
+
+```sh
+./bin/xynapse -v pull-ticket 123
+```
+
 Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`.
 
 ## Help

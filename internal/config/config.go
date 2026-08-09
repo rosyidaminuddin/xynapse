@@ -12,6 +12,7 @@ type Config struct {
 	Jira     JiraConfig     `yaml:"jira"`
 	Defaults Defaults       `yaml:"defaults"`
 	Storage  StorageConfig  `yaml:"storage"`
+	Verbose  bool           `yaml:"-"`
 }
 
 type JiraConfig struct {
