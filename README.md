@@ -113,6 +113,9 @@ go test ./...
 ./bin/xynapse plan MERADIO-123 --dir ~/work/myproject
 ./bin/xynapse implement MERADIO-123 --dir ~/work/myproject
 
+# Analyze a ticket on an existing feature branch
+./bin/xynapse plan MERADIO-123 -b feature-v5/MERADIO-123
+
 # Display a saved plan as styled markdown in the terminal
 ./bin/xynapse show-plan MERADIO-123
 
@@ -146,6 +149,7 @@ go test ./...
 - `-f`, `--force` — skip the confirmation prompt (`clear-cache`, `implement`) or the dirty-tree check (`prepare`)
 - `--dir <repo>` — target repo directory for `plan`/`implement`/`prepare`/`finalize` (defaults to `opencode.dir`, then cwd)
 - `--model <provider/model>` — override the opencode model for `plan`/`implement`
+- `-b`, `--branch <branch>` — check out this branch in the target repo before `plan` analyzes the ticket
 - `--plan <path>` — use a specific plan file for `implement` (default: `<storage>/plans/<KEY>.md`)
 - `-b`, `--base <branch>` — base branch: required for `prepare` (branch from); for `finalize` it is the PR target and makes finalize refuse to commit on it
 - `--template <tmpl>` — override the branch template for `prepare`

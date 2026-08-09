@@ -144,11 +144,13 @@ func newPlanCmd(cfg *config.Config) *cobra.Command {
 			if model == "" {
 				model = cfg.Opencode.Model
 			}
-			return command.Plan(cfg, args[0], dir, model)
+			branch, _ := cmd.Flags().GetString("branch")
+			return command.Plan(cfg, args[0], dir, model, branch)
 		},
 	}
 	cmd.Flags().String("dir", "", "target repo directory (default: current working directory)")
 	cmd.Flags().String("model", "", "override the opencode model")
+	cmd.Flags().StringP("branch", "b", "", "check out this branch in the target repo before planning")
 	return cmd
 }
 

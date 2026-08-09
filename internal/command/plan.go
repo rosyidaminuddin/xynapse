@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"xynapse/internal/config"
+	"xynapse/internal/git"
 	"xynapse/internal/models"
 	"xynapse/internal/opencode"
 	"xynapse/internal/storage"
@@ -60,12 +61,21 @@ func ticketDossier(t *models.Ticket) string {
 }
 
 // Plan runs the analyze-ticket skill via opencode and saves the resulting
-// implementation plan to <storage>/plans/<KEY>.md.
-func Plan(cfg *config.Config, ticketRef, dir, model string) error {
+// implementation plan to <storage>/plans/<KEY>.md. When branch is non-empty,
+// the target repo switches to it before analysis starts.
+func Plan(cfg *config.Config, ticketRef, dir, model, branch string) error {
 	s := storage.NewStorage(cfg.Storage.Base)
 	ticket, err := resolveTicket(cfg, s, ticketRef)
 	if err != nil {
 		return err
+	}
+
+	if branch != "" {
+		g := git.New(dir, "")
+		logStep(cfg.Verbose, "checking out branch %s in %s", branch, dir)
+		if err := g.Checkout(branch); err != nil {
+			return err
+		}
 	}
 
 	prompt := fmt.Sprintf("Use the analyze-ticket skill. Analyze this ticket and produce a step-by-step implementation plan.\n\nTicket:\n%s", ticketDossier(ticket))
