@@ -181,8 +181,10 @@ func TestShowPlanWarnsOnStale(t *testing.T) {
 				t.Errorf("ShowPlan: %v", err)
 			}
 		})
-		if out != plan {
-			t.Errorf("ShowPlan output = %q, want %q", out, plan)
+		for _, want := range []string{plan, "**Status:** not started"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("ShowPlan output missing %q:\n%s", want, out)
+			}
 		}
 	})
 	if !strings.Contains(errOut, "stale") {

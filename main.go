@@ -83,6 +83,9 @@ so get commands can read them without hitting the server.`,
 		newPlanCmd(cfg),
 		newImplementCmd(cfg),
 		newShowPlanCmd(cfg),
+		newPrepareCmd(cfg),
+		newFinalizeCmd(cfg),
+		newStatusCmd(cfg),
 	)
 
 	return root
@@ -214,5 +217,66 @@ func newGetSprintCmd(cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().StringSliceP("type", "t", nil, "comma-separated issue types to filter by (e.g. Story,Bug,Epic)")
 	cmd.Flags().Bool("unplanned", false, "only list tickets without a saved plan")
+	return cmd
+}
+
+func newPrepareCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "prepare <ticket-number|key|url>",
+		Short: "create a feature branch for a ticket from a base branch",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, _ := cmd.Flags().GetString("dir")
+			if dir == "" {
+				dir = cfg.Opencode.Dir
+			}
+			base, _ := cmd.Flags().GetString("base")
+			template, _ := cmd.Flags().GetString("template")
+			force, _ := cmd.Flags().GetBool("force")
+			return command.Prepare(cfg, args[0], dir, base, template, force)
+		},
+	}
+	cmd.Flags().String("dir", "", "target repo directory (default: current working directory)")
+	cmd.Flags().StringP("base", "b", "", "base branch to branch from (required)")
+	cmd.Flags().String("template", "", "branch template (default: config git.branch_template)")
+	cmd.Flags().BoolP("force", "f", false, "proceed even if the working tree is dirty")
+	_ = cmd.MarkFlagRequired("base")
+	return cmd
+}
+
+func newFinalizeCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "finalize <ticket-number|key|url>",
+		Short: "commit changes, push the branch, and optionally open a pull request",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, _ := cmd.Flags().GetString("dir")
+			if dir == "" {
+				dir = cfg.Opencode.Dir
+			}
+			base, _ := cmd.Flags().GetString("base")
+			message, _ := cmd.Flags().GetString("message")
+			pr, _ := cmd.Flags().GetBool("pr")
+			return command.Finalize(cfg, args[0], dir, base, message, pr)
+		},
+	}
+	cmd.Flags().String("dir", "", "target repo directory (default: current working directory)")
+	cmd.Flags().StringP("base", "b", "", "base branch (PR target; refuse to commit on it when set)")
+	cmd.Flags().String("message", "", "commit message (default: \"<KEY>: <summary>\")")
+	cmd.Flags().Bool("pr", false, "create a pull request with gh after pushing (requires --base)")
+	return cmd
+}
+
+func newStatusCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "status <ticket-number|key|url>",
+		Short: "show or update a ticket's plan status",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			set, _ := cmd.Flags().GetString("set")
+			return command.PlanStatus(cfg, args[0], set)
+		},
+	}
+	cmd.Flags().String("set", "", "set the plan status (not started, in progress, in review, done)")
 	return cmd
 }

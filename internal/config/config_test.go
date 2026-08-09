@@ -81,6 +81,9 @@ func TestLoadValid(t *testing.T) {
 	if cfg.Opencode.Dir != "/work/repo" {
 		t.Errorf("Opencode.Dir = %q", cfg.Opencode.Dir)
 	}
+	if cfg.Git.BranchTemplate != "feature-v5/{Key}" {
+		t.Errorf("Git.BranchTemplate = %q, want feature-v5/{Key}", cfg.Git.BranchTemplate)
+	}
 }
 
 func TestLoadDefaults(t *testing.T) {
@@ -111,6 +114,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Opencode.AutoApprove {
 		t.Errorf("Opencode.AutoApprove default = true, want false")
+	}
+	if cfg.Git.BranchTemplate != "feature-v5/{Key}" {
+		t.Errorf("Git.BranchTemplate default = %q, want feature-v5/{Key}", cfg.Git.BranchTemplate)
 	}
 }
 

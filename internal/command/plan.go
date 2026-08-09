@@ -95,6 +95,10 @@ func Plan(cfg *config.Config, ticketRef, dir, model string) error {
 		return fmt.Errorf("failed to write plan %s: %w", planPath, err)
 	}
 
+	if err := s.SetPlanStatus(ticket.Project, ticket.Key, storage.PlanStatusNotStarted); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not mark plan status: %v\n", err)
+	}
+
 	if err := RenderMD(os.Stdout, planText); err != nil {
 		return fmt.Errorf("failed to render plan: %w", err)
 	}

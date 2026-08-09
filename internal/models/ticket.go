@@ -110,14 +110,14 @@ func flattenADF(raw json.RawMessage) string {
 	}
 
 	blockTypes := map[string]bool{
-		"paragraph":  true,
-		"heading":    true,
-		"bulletList": true,
+		"paragraph":   true,
+		"heading":     true,
+		"bulletList":  true,
 		"orderedList": true,
-		"listItem":   true,
-		"blockquote": true,
-		"codeBlock":  true,
-		"rule":       true,
+		"listItem":    true,
+		"blockquote":  true,
+		"codeBlock":   true,
+		"rule":        true,
 	}
 
 	var sb strings.Builder

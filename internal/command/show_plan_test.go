@@ -47,8 +47,10 @@ func TestShowPlanRenders(t *testing.T) {
 			t.Errorf("ShowPlan: %v", err)
 		}
 	})
-	if out != plan {
-		t.Errorf("ShowPlan output = %q, want %q", out, plan)
+	for _, want := range []string{"**Status:** not started", "# Plan", "- step one"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("ShowPlan output missing %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -56,6 +58,7 @@ func testConfig(base string) *config.Config {
 	return &config.Config{
 		Defaults: config.Defaults{Project: "PROJ"},
 		Storage:  config.StorageConfig{Base: base},
+		Git:      config.GitConfig{BranchTemplate: "feature-v5/{Key}"},
 	}
 }
 

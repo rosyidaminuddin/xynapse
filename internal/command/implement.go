@@ -36,6 +36,10 @@ func Implement(cfg *config.Config, ticketRef, planPath, dir, model string, force
 		return fmt.Errorf("plan %s is empty (run `xynapse plan %s` first)", planPath, ticketRef)
 	}
 
+	if err := s.SetPlanStatus(project, number, storage.PlanStatusInProgress); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not mark plan in progress: %v\n", err)
+	}
+
 	prompt := fmt.Sprintf("Use the implement-plan skill. Execute this plan in the current repository, following its steps and acceptance criteria.\n\nPlan:\n%s", string(planBytes))
 
 	logStep(cfg.Verbose, "running opencode implement-plan skill (dir=%s)", dir)

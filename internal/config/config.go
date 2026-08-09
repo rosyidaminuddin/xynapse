@@ -10,12 +10,13 @@ import (
 )
 
 type Config struct {
-	Jira       JiraConfig      `yaml:"jira"`
-	Defaults   Defaults        `yaml:"defaults"`
-	Storage    StorageConfig   `yaml:"storage"`
-	Expiration Expiration      `yaml:"expiration"`
-	Opencode   OpencodeConfig  `yaml:"opencode"`
-	Verbose    bool            `yaml:"-"`
+	Jira       JiraConfig     `yaml:"jira"`
+	Defaults   Defaults       `yaml:"defaults"`
+	Storage    StorageConfig  `yaml:"storage"`
+	Expiration Expiration     `yaml:"expiration"`
+	Opencode   OpencodeConfig `yaml:"opencode"`
+	Git        GitConfig      `yaml:"git"`
+	Verbose    bool           `yaml:"-"`
 }
 
 type JiraConfig struct {
@@ -37,16 +38,23 @@ type StorageConfig struct {
 
 // OpencodeConfig controls how xynapse invokes the opencode CLI to run skills.
 type OpencodeConfig struct {
-	Bin          string `yaml:"bin"`
-	Model        string `yaml:"model"`
-	AutoApprove  bool   `yaml:"auto_approve"`
-	Dir          string `yaml:"dir"`
+	Bin         string `yaml:"bin"`
+	Model       string `yaml:"model"`
+	AutoApprove bool   `yaml:"auto_approve"`
+	Dir         string `yaml:"dir"`
 }
 
 // Expiration controls how long locally cached tickets stay fresh before
 // get commands auto-refresh them from the server.
 type Expiration struct {
 	Hours int `yaml:"hours"`
+}
+
+// GitConfig controls how xynapse drives git/gh for prepare and finalize.
+type GitConfig struct {
+	// BranchTemplate expands to a feature branch name for a ticket. Supported
+	// placeholders: {Key}/{TicketKey}, {Project}, {Number}, {Board}, {Summary}.
+	BranchTemplate string `yaml:"branch_template"`
 }
 
 // Duration returns the expiry window as a time.Duration (0 when disabled).
@@ -98,6 +106,9 @@ func Load(path, envPath string) (*Config, error) {
 	}
 	if cfg.Opencode.Bin == "" {
 		cfg.Opencode.Bin = "opencode"
+	}
+	if cfg.Git.BranchTemplate == "" {
+		cfg.Git.BranchTemplate = "feature-v5/{Key}"
 	}
 
 	return &cfg, nil
