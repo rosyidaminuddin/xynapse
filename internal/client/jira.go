@@ -129,8 +129,8 @@ func (c *JiraClient) FetchSprintTickets(project string) ([]*models.Ticket, error
 
 		var result struct {
 			Issues     []models.JiraRawIssue `json:"issues"`
-			Total      int                    `json:"total"`
-			MaxResults int                    `json:"maxResults"`
+			Total      int                   `json:"total"`
+			MaxResults int                   `json:"maxResults"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 			resp.Body.Close()

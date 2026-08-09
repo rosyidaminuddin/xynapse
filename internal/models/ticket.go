@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -28,8 +29,9 @@ type JiraRawIssue struct {
 	ID     string `json:"id"`
 	Key    string `json:"key"`
 	Fields struct {
-		Summary string `json:"summary"`
-		Project struct {
+		Summary     string          `json:"summary"`
+		Description json.RawMessage `json:"description"`
+		Project     struct {
 			Key string `json:"key"`
 		} `json:"project"`
 		Status struct {
@@ -56,14 +58,20 @@ func MapRawToTicket(raw *JiraRawIssue) *Ticket {
 		updatedAt = time.Now().UTC()
 	}
 
+	description := ""
+	if len(raw.Fields.Description) > 0 && string(raw.Fields.Description) != "null" {
+		description = string(raw.Fields.Description)
+	}
+
 	return &Ticket{
-		ID:        raw.ID,
-		Key:       raw.Key,
-		Project:   raw.Fields.Project.Key,
-		Summary:   raw.Fields.Summary,
-		Status:    raw.Fields.Status.Name,
-		Assignee:  assignee,
-		FetchedAt: time.Now().UTC(),
-		UpdatedAt: updatedAt,
+		ID:          raw.ID,
+		Key:         raw.Key,
+		Project:     raw.Fields.Project.Key,
+		Summary:     raw.Fields.Summary,
+		Status:      raw.Fields.Status.Name,
+		Assignee:    assignee,
+		Description: description,
+		FetchedAt:   time.Now().UTC(),
+		UpdatedAt:   updatedAt,
 	}
 }
