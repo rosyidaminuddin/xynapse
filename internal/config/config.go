@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	Jira       JiraConfig    `yaml:"jira"`
-	Defaults   Defaults      `yaml:"defaults"`
-	Storage    StorageConfig `yaml:"storage"`
-	Expiration Expiration    `yaml:"expiration"`
-	Verbose    bool          `yaml:"-"`
+	Jira       JiraConfig      `yaml:"jira"`
+	Defaults   Defaults        `yaml:"defaults"`
+	Storage    StorageConfig   `yaml:"storage"`
+	Expiration Expiration      `yaml:"expiration"`
+	Opencode   OpencodeConfig  `yaml:"opencode"`
+	Verbose    bool            `yaml:"-"`
 }
 
 type JiraConfig struct {
@@ -32,6 +33,14 @@ type Defaults struct {
 
 type StorageConfig struct {
 	Base string `yaml:"base"`
+}
+
+// OpencodeConfig controls how xynapse invokes the opencode CLI to run skills.
+type OpencodeConfig struct {
+	Bin          string `yaml:"bin"`
+	Model        string `yaml:"model"`
+	AutoApprove  bool   `yaml:"auto_approve"`
+	Dir          string `yaml:"dir"`
 }
 
 // Expiration controls how long locally cached tickets stay fresh before
@@ -86,6 +95,9 @@ func Load(path, envPath string) (*Config, error) {
 	}
 	if cfg.Storage.Base == "" {
 		cfg.Storage.Base = "storage"
+	}
+	if cfg.Opencode.Bin == "" {
+		cfg.Opencode.Bin = "opencode"
 	}
 
 	return &cfg, nil

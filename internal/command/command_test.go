@@ -1,6 +1,7 @@
 package command
 
 import (
+	"strings"
 	"testing"
 
 	"xynapse/internal/models"
@@ -69,5 +70,33 @@ func TestFilterByTypeEmpty(t *testing.T) {
 	got := filterByType(tickets, nil)
 	if len(got) != 1 {
 		t.Errorf("empty filter should return all tickets, got %d", len(got))
+	}
+}
+
+func TestTicketDossier(t *testing.T) {
+	ticket := &models.Ticket{
+		Key:             "PROJ-1",
+		Type:            "Story",
+		Status:          "In Progress",
+		Assignee:        "Adin",
+		Summary:         "Add clear-cache",
+		DescriptionText: "A description",
+	}
+	d := ticketDossier(ticket)
+	for _, want := range []string{"Key: PROJ-1", "Status: In Progress", "Assignee: Adin", "Summary: Add clear-cache", "A description"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("dossier missing %q:\n%s", want, d)
+		}
+	}
+}
+
+func TestTicketDossierTruncatesDescription(t *testing.T) {
+	long := strings.Repeat("x", 5000)
+	d := ticketDossier(&models.Ticket{Key: "PROJ-1", DescriptionText: long})
+	if !strings.Contains(d, "...") {
+		t.Error("expected long description to be truncated")
+	}
+	if len(d) > 4500 {
+		t.Errorf("dossier too long: %d", len(d))
 	}
 }

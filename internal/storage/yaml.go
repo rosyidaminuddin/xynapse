@@ -45,6 +45,16 @@ func (s *Storage) getSprintManifestPath(project string) string {
 	return filepath.Join(s.base, strings.ToUpper(project), "sprints", "current.yml")
 }
 
+// GetPlanPath returns the path where a ticket's implementation plan is stored
+// (e.g. <base>/plans/PROJ-123.md). A bare number is prefixed with the project.
+func (s *Storage) GetPlanPath(project, ticketKey string) string {
+	key := strings.ToUpper(ticketKey)
+	if !strings.Contains(key, "-") {
+		key = fmt.Sprintf("%s-%s", strings.ToUpper(project), key)
+	}
+	return filepath.Join(s.base, "plans", fmt.Sprintf("%s.md", key))
+}
+
 // WriteTicket serializes a single ticket model into local YAML.
 func (s *Storage) WriteTicket(ticket *models.Ticket) error {
 	filePath := s.getTicketPath(ticket.Project, ticket.Key)

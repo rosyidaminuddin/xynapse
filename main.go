@@ -79,6 +79,8 @@ so get commands can read them without hitting the server.`,
 		newGetTicketCmd(cfg),
 		newGetSprintCmd(cfg),
 		newClearCacheCmd(cfg),
+		newPlanCmd(cfg),
+		newImplementCmd(cfg),
 	)
 
 	return root
@@ -120,6 +122,52 @@ func newGetTicketCmd(cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringP("output", "o", "", "output format: table, json, or yaml (overrides config)")
+	return cmd
+}
+
+func newPlanCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "plan <ticket-number|key|url>",
+		Short: "analyze a ticket and generate an implementation plan via opencode",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, _ := cmd.Flags().GetString("dir")
+			if dir == "" {
+				dir = cfg.Opencode.Dir
+			}
+			model, _ := cmd.Flags().GetString("model")
+			if model == "" {
+				model = cfg.Opencode.Model
+			}
+			return command.Plan(cfg, args[0], dir, model)
+		},
+	}
+	cmd.Flags().String("dir", "", "target repo directory (default: current working directory)")
+	cmd.Flags().String("model", "", "override the opencode model")
+	return cmd
+}
+
+func newImplementCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "implement <ticket-number|key|url>",
+		Short: "execute a ticket's implementation plan in the repo via opencode",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, _ := cmd.Flags().GetString("dir")
+			if dir == "" {
+				dir = cfg.Opencode.Dir
+			}
+			model, _ := cmd.Flags().GetString("model")
+			if model == "" {
+				model = cfg.Opencode.Model
+			}
+			planPath, _ := cmd.Flags().GetString("plan")
+			return command.Implement(cfg, args[0], planPath, dir, model)
+		},
+	}
+	cmd.Flags().String("dir", "", "target repo directory (default: current working directory)")
+	cmd.Flags().String("model", "", "override the opencode model")
+	cmd.Flags().String("plan", "", "path to the plan file (default: <storage>/plans/<KEY>.md)")
 	return cmd
 }
 

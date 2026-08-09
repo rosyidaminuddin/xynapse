@@ -1,0 +1,48 @@
+package command
+
+import (
+	"fmt"
+	"os"
+
+	"xynapse/internal/config"
+	"xynapse/internal/opencode"
+	"xynapse/internal/storage"
+)
+
+// Implement runs the implement-plan skill via opencode, executing a saved
+// plan in the target repository. The plan is loaded from --plan or, by
+// default, from <storage>/plans/<KEY>.md.
+func Implement(cfg *config.Config, ticketRef, planPath, dir, model string) error {
+	s := storage.NewStorage(cfg.Storage.Base)
+	project, number, err := ParseTicketRef(ticketRef, cfg.Defaults.Project)
+	if err != nil {
+		return err
+	}
+
+	if planPath == "" {
+		planPath = s.GetPlanPath(project, number)
+	}
+	planBytes, err := os.ReadFile(planPath)
+	if err != nil {
+		return fmt.Errorf("failed to read plan %s: %w (run `xynapse plan %s` first)", planPath, err, ticketRef)
+	}
+	if len(planBytes) == 0 {
+		return fmt.Errorf("plan %s is empty (run `xynapse plan %s` first)", planPath, ticketRef)
+	}
+
+	prompt := fmt.Sprintf("Use the implement-plan skill. Execute this plan in the current repository, following its steps and acceptance criteria.\n\nPlan:\n%s", string(planBytes))
+
+	logStep(cfg.Verbose, "running opencode implement-plan skill (dir=%s)", dir)
+	out, err := opencode.Run(opencode.Options{
+		Bin:         cfg.Opencode.Bin,
+		Dir:         dir,
+		Model:       model,
+		AutoApprove: cfg.Opencode.AutoApprove,
+		Prompt:      prompt,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Print(opencode.ExtractText(out))
+	return nil
+}

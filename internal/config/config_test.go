@@ -23,6 +23,12 @@ storage:
 
 expiration:
   hours: 48
+
+opencode:
+  bin: "opencode"
+  model: "anthropic/claude-sonnet-4"
+  auto_approve: true
+  dir: "/work/repo"
 `
 
 func writeConfig(t *testing.T, content string) string {
@@ -63,6 +69,18 @@ func TestLoadValid(t *testing.T) {
 	if got := cfg.Expiration.Duration(); got != 48*time.Hour {
 		t.Errorf("Expiration.Duration() = %v, want %v", got, 48*time.Hour)
 	}
+	if cfg.Opencode.Bin != "opencode" {
+		t.Errorf("Opencode.Bin = %q", cfg.Opencode.Bin)
+	}
+	if cfg.Opencode.Model != "anthropic/claude-sonnet-4" {
+		t.Errorf("Opencode.Model = %q", cfg.Opencode.Model)
+	}
+	if !cfg.Opencode.AutoApprove {
+		t.Errorf("Opencode.AutoApprove = false, want true")
+	}
+	if cfg.Opencode.Dir != "/work/repo" {
+		t.Errorf("Opencode.Dir = %q", cfg.Opencode.Dir)
+	}
 }
 
 func TestLoadDefaults(t *testing.T) {
@@ -87,6 +105,12 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Expiration.Duration() != 0 {
 		t.Errorf("Expiration.Duration() should be 0 when unset, got %v", cfg.Expiration.Duration())
+	}
+	if cfg.Opencode.Bin != "opencode" {
+		t.Errorf("Opencode.Bin default = %q, want opencode", cfg.Opencode.Bin)
+	}
+	if cfg.Opencode.AutoApprove {
+		t.Errorf("Opencode.AutoApprove default = true, want false")
 	}
 }
 

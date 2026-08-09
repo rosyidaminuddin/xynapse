@@ -20,3 +20,10 @@ storage:
 # auto-refresh it from the Jira server. Set to 0 to disable auto-refresh.
 expiration:
   hours: 24
+
+# OpenCode Integration (used by plan and implement commands)
+opencode:
+  bin: "opencode"      # Path or name of the opencode binary on PATH
+  model: ""            # Optional provider/model override, e.g. "anthropic/claude-sonnet-4"
+  auto_approve: false  # Pass --auto to opencode run (implement may edit files without prompting)
+  dir: ""              # Target repo directory (default: current working directory)

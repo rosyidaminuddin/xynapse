@@ -186,3 +186,12 @@ func TestClearEmptyCache(t *testing.T) {
 		t.Errorf("removed = %d, want 0", removed)
 	}
 }
+
+func TestGetPlanPath(t *testing.T) {
+	s := newTestStorage(t)
+	got := s.GetPlanPath("PROJ", "1")
+	want := filepath.Join(s.base, "plans", "PROJ-1.md")
+	if got != want {
+		t.Errorf("GetPlanPath = %q, want %q", got, want)
+	}
+}

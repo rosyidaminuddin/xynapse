@@ -44,6 +44,18 @@ else
   echo "==> Config already exists at $CONFIG_DEST/config.yaml, leaving it untouched"
 fi
 
+# Sync opencode skills to the global opencode config dir so `plan` and
+# `implement` work from any repository.
+OPENCODE_SKILLS_SRC=".opencode/skills"
+OPENCODE_SKILLS_DEST="$DESTDIR${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills"
+if [[ -d "$OPENCODE_SKILLS_SRC" ]]; then
+  echo "==> Syncing opencode skills to $OPENCODE_SKILLS_DEST"
+  mkdir -p "$OPENCODE_SKILLS_DEST"
+  cp -R "$OPENCODE_SKILLS_SRC/." "$OPENCODE_SKILLS_DEST/"
+else
+  echo "==> No skills directory found at $OPENCODE_SKILLS_SRC, skipping"
+fi
+
 echo
 echo "Done. Run '$BIN_NAME --help' to verify."
 echo "Add to your shell rc if $BIN_DIR is not already on PATH:"

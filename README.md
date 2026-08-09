@@ -6,6 +6,7 @@ A CLI to manage Jira tickets locally. Tickets are fetched from the Jira REST API
 
 - Go 1.26+
 - A Jira Cloud account with API token access
+- [opencode](https://opencode.ai) CLI for the `plan` and `implement` commands
 
 ## Install
 
@@ -14,7 +15,7 @@ A CLI to manage Jira tickets locally. Tickets are fetched from the Jira REST API
 PREFIX=/usr/local ./install.sh   # install to /usr/local/bin (requires sudo)
 ```
 
-The script builds the binary into `bin/`, copies it to a directory on `PATH` (default `~/.local/bin`), and installs the example config to `~/.config/xynapse/config.yaml` on first run. Add to your shell rc if `~/.local/bin` is not on `PATH`:
+The script builds the binary into `bin/`, copies it to a directory on `PATH` (default `~/.local/bin`), installs the example config to `~/.config/xynapse/config.yaml` on first run, and syncs the opencode skills (`.opencode/skills/`) to `~/.config/opencode/skills/`. Add to your shell rc if `~/.local/bin` is not on `PATH`:
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
@@ -41,6 +42,12 @@ storage:
 
 expiration:
   hours: 24              # get commands auto-refresh cached data older than this; 0 disables
+
+opencode:
+  bin: "opencode"        # path or name of the opencode binary on PATH
+  model: ""              # optional provider/model override, e.g. "anthropic/claude-sonnet-4"
+  auto_approve: false    # pass --auto to opencode run (implement may edit files without prompting)
+  dir: ""                # target repo directory (default: current working directory)
 ```
 
 Credentials are resolved from (highest priority first):
@@ -91,6 +98,13 @@ go test ./...
 
 # Delete the cached MERADIO tickets without prompting
 ./bin/xynapse clear-cache -f -p MERADIO
+
+# Analyze a ticket and generate an implementation plan (saved to <storage>/plans/<KEY>.md)
+./bin/xynapse plan MERADIO-123
+
+# Plan against a specific repo, or execute a saved plan in it
+./bin/xynapse plan MERADIO-123 --dir ~/work/myproject
+./bin/xynapse implement MERADIO-123 --dir ~/work/myproject
 ```
 
 ### Ticket references
@@ -110,6 +124,18 @@ go test ./...
 - `-t`, `--type <types>` — comma-separated issue types (e.g. `Story,Bug,Epic`). For `pull-sprint` it is applied as a JQL `issuetype in (...)` filter on the server; for `get-sprint` it filters the locally cached tickets.
 - `-o`, `--output <format>` — output format for `get-ticket`: `table`, `json`, or `yaml` (overrides config)
 - `-f`, `--force` — skip the confirmation prompt (used with `clear-cache`)
+- `--dir <repo>` — target repo directory for `plan`/`implement` (defaults to `opencode.dir`, then cwd)
+- `--model <provider/model>` — override the opencode model for `plan`/`implement`
+- `--plan <path>` — use a specific plan file for `implement` (default: `<storage>/plans/<KEY>.md`)
+
+### Implementation plans
+
+`plan` and `implement` delegate to the [opencode](https://opencode.ai) CLI and two skills shipped in this repo (`.opencode/skills/`, synced to `~/.config/opencode/skills/` by `install.sh`):
+
+- `xynapse plan <ref>` — fetches/refreshes the ticket, runs the `analyze-ticket` skill to produce a step-by-step implementation plan, and saves it to `<storage>/plans/<KEY>.md`.
+- `xynapse implement <ref>` — runs the `implement-plan` skill in the target repo to execute the saved plan. The agent leaves changes in the working tree; it does not commit or push.
+
+Review the plan before executing. Skills require the opencode CLI to be installed and authenticated.
 
 ### Cache expiration
 
@@ -117,7 +143,7 @@ When cached data is older than `expiration.hours`, `get-ticket` and `get-sprint`
 
 ### Storage layout
 
-Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`. When `board_id` is configured, `pull-sprint` looks up the active sprint via the Jira Agile API and stores its `sprint_id` and `sprint_name` in the manifest. Each ticket keeps both the raw ADF description JSON (`description`) and a flattened plain-text copy (`description_text`).
+Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`. When `board_id` is configured, `pull-sprint` looks up the active sprint via the Jira Agile API and stores its `sprint_id` and `sprint_name` in the manifest. Each ticket keeps both the raw ADF description JSON (`description`) and a flattened plain-text copy (`description_text`). Implementation plans from `plan` are saved under `storage/plans/<KEY>.md`.
 
 ## Help
 
