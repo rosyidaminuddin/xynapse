@@ -39,8 +39,9 @@ func newRootCmd() *cobra.Command {
 	var project string
 
 	root := &cobra.Command{
-		Use:   "xynapse",
-		Short: "Manage Jira tickets locally",
+		Use:           "xynapse",
+		Short:         "Manage Jira tickets locally",
+		SilenceErrors: true, // main() prints the error once to stderr
 		Long: `xynapse fetches Jira tickets and stores them as local YAML files
 so get commands can read them without hitting the server.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
