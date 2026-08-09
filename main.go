@@ -208,9 +208,11 @@ func newGetSprintCmd(cfg *config.Config) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			types, _ := cmd.Flags().GetStringSlice("type")
-			return command.GetSprint(cfg, types)
+			unplanned, _ := cmd.Flags().GetBool("unplanned")
+			return command.GetSprint(cfg, types, unplanned)
 		},
 	}
 	cmd.Flags().StringSliceP("type", "t", nil, "comma-separated issue types to filter by (e.g. Story,Bug,Epic)")
+	cmd.Flags().Bool("unplanned", false, "only list tickets without a saved plan")
 	return cmd
 }

@@ -10,7 +10,7 @@ import (
 	"xynapse/internal/storage"
 )
 
-func GetSprint(cfg *config.Config, types []string) error {
+func GetSprint(cfg *config.Config, types []string, unplanned bool) error {
 	s := storage.NewStorage(cfg.Storage.Base)
 
 	logStep(cfg.Verbose, "reading sprint manifest for project %s from %s", cfg.Defaults.Project, cfg.Storage.Base)
@@ -45,10 +45,26 @@ func GetSprint(cfg *config.Config, types []string) error {
 		})
 	}
 
+	if unplanned {
+		views = filterUnplanned(views)
+		logStep(cfg.Verbose, "filtered to %d ticket(s) without a plan", len(views))
+	}
+
 	if err := printSprintTickets(cfg.Defaults.OutputFormat, views); err != nil {
 		return fmt.Errorf("failed to print sprint tickets: %w", err)
 	}
 	return nil
+}
+
+// filterUnplanned keeps only tickets that have no saved plan.
+func filterUnplanned(views []SprintTicket) []SprintTicket {
+	filtered := make([]SprintTicket, 0, len(views))
+	for _, v := range views {
+		if v.Plan == PlanNone {
+			filtered = append(filtered, v)
+		}
+	}
+	return filtered
 }
 
 // filterByType keeps only tickets whose type matches one of the given types

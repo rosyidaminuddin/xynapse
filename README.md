@@ -93,6 +93,9 @@ go test ./...
 # List only Epic tickets from the active sprint
 ./bin/xynapse get-sprint -t Epic
 
+# List tickets that have no saved plan yet
+./bin/xynapse get-sprint --unplanned
+
 # Delete all locally cached tickets and plans (prompts for confirmation)
 ./bin/xynapse clear-cache
 

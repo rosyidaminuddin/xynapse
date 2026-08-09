@@ -79,6 +79,19 @@ func TestStaleWarningSkipsWithoutTicket(t *testing.T) {
 	}
 }
 
+func TestFilterUnplanned(t *testing.T) {
+	views := []SprintTicket{
+		{Ticket: &models.Ticket{Key: "PROJ-1"}, Plan: PlanFresh},
+		{Ticket: &models.Ticket{Key: "PROJ-2"}, Plan: PlanStale},
+		{Ticket: &models.Ticket{Key: "PROJ-3"}, Plan: PlanNone},
+		{Ticket: &models.Ticket{Key: "PROJ-4"}, Plan: PlanNone},
+	}
+	got := filterUnplanned(views)
+	if len(got) != 2 || got[0].Ticket.Key != "PROJ-3" || got[1].Ticket.Key != "PROJ-4" {
+		t.Errorf("filterUnplanned = %+v, want PROJ-3, PROJ-4", got)
+	}
+}
+
 func TestConfirmStale(t *testing.T) {
 	setup := func(t *testing.T) (*storage.Storage, string) {
 		base := t.TempDir()
