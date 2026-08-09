@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xynapse/internal/models"
+	"xynapse/internal/storage"
 )
 
 func TestPrepareCreatesBranch(t *testing.T) {
@@ -87,5 +90,60 @@ func TestPrepareMissingBaseBranch(t *testing.T) {
 
 	if err := Prepare(cfg, "PROJ-1", dir, "does-not-exist", "", false); err == nil {
 		t.Fatal("expected error for missing base branch")
+	}
+}
+
+func writeTicketOfType(t *testing.T, base, key, typ string) {
+	t.Helper()
+	s := storage.NewStorage(base)
+	if err := s.WriteTicket(&models.Ticket{
+		Key: key, Project: "PROJ", Summary: "Ticket " + key, Status: "Open", Type: typ,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPreparePerTypeTemplate(t *testing.T) {
+	dir := initRepo(t, "")
+	base := t.TempDir()
+	writeTicketOfType(t, base, "PROJ-1", "Bug")
+	cfg := testConfig(base)
+	cfg.Git.BranchTemplates = map[string]string{"Bug": "fix-v5/{Key}"}
+
+	if err := Prepare(cfg, "PROJ-1", dir, "main", "", false); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if branch := gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); branch != "fix-v5/PROJ-1" {
+		t.Errorf("current branch = %q, want fix-v5/PROJ-1", branch)
+	}
+}
+
+func TestPreparePerTypeFallback(t *testing.T) {
+	dir := initRepo(t, "")
+	base := t.TempDir()
+	writeTicketOfType(t, base, "PROJ-1", "Story")
+	cfg := testConfig(base)
+	cfg.Git.BranchTemplates = map[string]string{"Bug": "fix-v5/{Key}"}
+
+	if err := Prepare(cfg, "PROJ-1", dir, "main", "", false); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if branch := gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); branch != "feature-v5/PROJ-1" {
+		t.Errorf("current branch = %q, want feature-v5/PROJ-1 (fallback)", branch)
+	}
+}
+
+func TestPrepareFlagOverridesPerType(t *testing.T) {
+	dir := initRepo(t, "")
+	base := t.TempDir()
+	writeTicketOfType(t, base, "PROJ-1", "Bug")
+	cfg := testConfig(base)
+	cfg.Git.BranchTemplates = map[string]string{"Bug": "fix-v5/{Key}"}
+
+	if err := Prepare(cfg, "PROJ-1", dir, "main", "custom/{TicketKey}", false); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if branch := gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); branch != "custom/PROJ-1" {
+		t.Errorf("current branch = %q, want custom/PROJ-1", branch)
 	}
 }

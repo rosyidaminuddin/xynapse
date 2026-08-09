@@ -21,7 +21,7 @@ func Prepare(cfg *config.Config, ticketRef, dir, base, template string, force bo
 
 	tmpl := template
 	if tmpl == "" {
-		tmpl = cfg.Git.BranchTemplate
+		tmpl = git.ResolveTemplate(cfg.Git.BranchTemplate, cfg.Git.BranchTemplates, ticket.Type)
 	}
 	if tmpl == "" {
 		tmpl = "feature-v5/{Key}"

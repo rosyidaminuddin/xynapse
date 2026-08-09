@@ -20,6 +20,22 @@ type TemplateVars struct {
 
 var placeholderRe = regexp.MustCompile(`\{[^}]*\}`)
 
+// ResolveTemplate selects the branch template for an issue type. When
+// perType contains a template for ticketType (both matched
+// case-insensitively) it wins; otherwise the fallback is returned.
+func ResolveTemplate(fallback string, perType map[string]string, ticketType string) string {
+	key := strings.ToLower(strings.TrimSpace(ticketType))
+	if v, ok := perType[key]; ok {
+		return v
+	}
+	for k, v := range perType {
+		if strings.ToLower(strings.TrimSpace(k)) == key {
+			return v
+		}
+	}
+	return fallback
+}
+
 // ExpandTemplate replaces placeholders in a branch template. Supported
 // placeholders: {Key} or {TicketKey}, {Project}, {Number}, {Board}, {Summary}.
 // {Summary} is slugified automatically. Unknown placeholders and missing

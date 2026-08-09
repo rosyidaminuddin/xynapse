@@ -54,7 +54,11 @@ type Expiration struct {
 type GitConfig struct {
 	// BranchTemplate expands to a feature branch name for a ticket. Supported
 	// placeholders: {Key}/{TicketKey}, {Project}, {Number}, {Board}, {Summary}.
+	// Used as the fallback when no per-type template matches.
 	BranchTemplate string `yaml:"branch_template"`
+	// BranchTemplates overrides BranchTemplate per issue type (keys are
+	// matched case-insensitively, e.g. Story/Bug/Epic).
+	BranchTemplates map[string]string `yaml:"branch_templates"`
 }
 
 // Duration returns the expiry window as a time.Duration (0 when disabled).

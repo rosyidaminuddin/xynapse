@@ -29,6 +29,12 @@ opencode:
   model: "anthropic/claude-sonnet-4"
   auto_approve: true
   dir: "/work/repo"
+
+git:
+  branch_template: "feature-v5/{Key}"
+  branch_templates:
+    Bug: "fix-v5/{Key}"
+    Epic: "epic/{Key}"
 `
 
 func writeConfig(t *testing.T, content string) string {
@@ -83,6 +89,9 @@ func TestLoadValid(t *testing.T) {
 	}
 	if cfg.Git.BranchTemplate != "feature-v5/{Key}" {
 		t.Errorf("Git.BranchTemplate = %q, want feature-v5/{Key}", cfg.Git.BranchTemplate)
+	}
+	if cfg.Git.BranchTemplates["Bug"] != "fix-v5/{Key}" || cfg.Git.BranchTemplates["Epic"] != "epic/{Key}" {
+		t.Errorf("Git.BranchTemplates = %v", cfg.Git.BranchTemplates)
 	}
 }
 

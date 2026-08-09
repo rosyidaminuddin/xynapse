@@ -52,6 +52,9 @@ opencode:
 
 git:
   branch_template: "feature-v5/{Key}"  # branch naming for `prepare`; see placeholders below
+  branch_templates:                     # optional per-type overrides (matched case-insensitively)
+    Bug: "fix-v5/{Key}"
+    Epic: "epic/{Key}"
 ```
 
 Credentials are resolved from (highest priority first):
@@ -178,7 +181,7 @@ Review the plan before executing. Skills require the opencode CLI to be installe
 
 `prepare` and `finalize` wrap the git/gh flow around a ticket:
 
-- `xynapse prepare <ref> -b main` — creates a feature branch from the base branch. The branch name is the `git.branch_template` expanded with ticket placeholders (default `feature-v5/{Key}`); pass `--template` to override. It refuses to branch from a dirty working tree unless `--force` is given, and idempotently checks out the branch if it already exists.
+- `xynapse prepare <ref> -b main` — creates a feature branch from the base branch. The branch name is the `git.branch_template` expanded with ticket placeholders (default `feature-v5/{Key}`); a `git.branch_templates.<TYPE>` entry overrides it for that issue type (e.g. `Bug: "fix-v5/{Key}"`), and `--template` overrides everything. It refuses to branch from a dirty working tree unless `--force` is given, and idempotently checks out the branch if it already exists.
 - `xynapse finalize <ref> [-b main] [--pr]` — `git add -A` + `git commit -m "<KEY>: <summary>"` (override with `--message`), then `git push -u origin <current branch>`. With `--pr` (requires `--base`) it opens a pull request via `gh` with a `Closes <KEY>` trailer and a link back to the ticket. It refuses to run on the base branch, and marks the ticket's plan `done` on success.
 
 Branch template placeholders:

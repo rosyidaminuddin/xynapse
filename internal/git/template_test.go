@@ -64,3 +64,31 @@ func TestSlugify(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveTemplate(t *testing.T) {
+	perType := map[string]string{
+		"bug":  "fix-v5/{Key}",
+		"epic": "epic/{Key}",
+	}
+
+	cases := []struct {
+		name       string
+		ticketType string
+		want       string
+	}{
+		{"exact match", "Bug", "fix-v5/{Key}"},
+		{"lowercase match", "bug", "fix-v5/{Key}"},
+		{"uppercase key match", "BUG", "fix-v5/{Key}"},
+		{"with space", " Bug ", "fix-v5/{Key}"},
+		{"epic", "Epic", "epic/{Key}"},
+		{"fallback", "Story", "feature-v5/{Key}"},
+		{"fallback empty type", "", "feature-v5/{Key}"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ResolveTemplate("feature-v5/{Key}", perType, tc.ticketType); got != tc.want {
+				t.Errorf("ResolveTemplate(%q) = %q, want %q", tc.ticketType, got, tc.want)
+			}
+		})
+	}
+}
