@@ -1,0 +1,40 @@
+# Jira Connection Settings
+jira:
+  url: ""
+  email: ""
+  api_token: ""
+  timeout_seconds: 15
+
+# Default CLI Preferences
+defaults:
+  project: "MERADIO"              # Fallback project key if omitted in commands
+  board_id: "561"                 # Optional default board ID for sprint queries
+  output_format: "table"       # Terminal output style: table, json, or yaml
+
+# Local Storage Architecture Settings
+storage:
+  # Base directory where all ticket YAML files are stored
+  base: "storage"
+  
+  # Organization pattern for issue files:
+  # Available variables: {project}, {sprint}, {key}, {number}
+  file_pattern: "{project}/{sprint}/{key}.yml"
+  
+  # Location of current sprint metadata/manifest
+  sprint_manifest_path: "{project}/sprints/current.yml"
+
+# Cache & Sync Rules
+cache:
+  # Warn user if local YAML data is older than this threshold (in hours)
+  warn_stale_hours: 24
+  
+  # Automatically refresh local YAML from Jira server when running 'get' or 'current sprint'
+  auto_refresh: false
+
+# Jira Field Mapping Strategy
+fields:
+  # Include custom fields in the fetched output YAML under a 'custom_fields' key
+  include_custom_fields: false
+  
+  # Automatically fetch sub-tasks when pulling a parent ticket
+  include_subtasks: false 

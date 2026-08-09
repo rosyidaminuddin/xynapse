@@ -1,0 +1,29 @@
+               +-----------------------+
+               |   Jira Server / REST  |
+               +-----------+-----------+
+                           ^
+      (1) REST API         | (2) REST API
+      Pull Ticket          | Pull Sprint
+                           v
+               +-----------+-----------+
+               |   Jira Client Module  |
+               +-----------+-----------+
+                           |
+                           v
+               +-----------+-----------+
+               |     Storage Module    |
+               |     (YAML Writer)     |
+               +-----------+-----------+
+                           |
+                           v Writes .yml files
+               +-----------+-----------+
+               |     Local File System |
+               |     /tickets/*.yml    |
+               +-----------+-----------+
+                           ^
+      (3) Local Read       | (4) Local Read
+      Get Ticket           | Current Sprint
+                           v
+               +-----------+-----------+
+               |    CLI Output Driver  |
+               +-----------------------+
