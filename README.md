@@ -30,7 +30,7 @@ Config is always loaded from `~/.config/xynapse/` — never from project files. 
 jira:
   url: "https://yourcompany.atlassian.net"
   email: "you@example.com"
-  api_token: ""          # or set via JIRA_API_TOKEN / .env
+  api_token: ""          # or set via JIRA_API_TOKEN
   timeout_seconds: 15
 
 defaults:
@@ -60,8 +60,7 @@ git:
 Credentials are resolved from (highest priority first):
 
 1. Environment variables `JIRA_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
-2. A `.env` file in `~/.config/xynapse/` (same variable names)
-3. Values in `~/.config/xynapse/config.yaml`
+2. Values in `~/.config/xynapse/config.yaml`
 
 > Never commit credentials. `~/.config/xynapse/` is per-user and not shared.
 
