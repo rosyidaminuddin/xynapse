@@ -85,6 +85,12 @@ go test ./...
 
 # List only Epic tickets from the active sprint
 ./bin/xynapse get-sprint -t Epic
+
+# Delete all locally cached tickets (prompts for confirmation)
+./bin/xynapse clear-cache
+
+# Delete the cached MERADIO tickets without prompting
+./bin/xynapse clear-cache -f -p MERADIO
 ```
 
 ### Ticket references
@@ -103,6 +109,7 @@ go test ./...
 - `-p`, `--project <KEY>` — override the default project for this invocation
 - `-t`, `--type <types>` — comma-separated issue types (e.g. `Story,Bug,Epic`). For `pull-sprint` it is applied as a JQL `issuetype in (...)` filter on the server; for `get-sprint` it filters the locally cached tickets.
 - `-o`, `--output <format>` — output format for `get-ticket`: `table`, `json`, or `yaml` (overrides config)
+- `-f`, `--force` — skip the confirmation prompt (used with `clear-cache`)
 
 ### Cache expiration
 

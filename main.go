@@ -78,6 +78,7 @@ so get commands can read them without hitting the server.`,
 		newPullSprintCmd(cfg),
 		newGetTicketCmd(cfg),
 		newGetSprintCmd(cfg),
+		newClearCacheCmd(cfg),
 	)
 
 	return root
@@ -119,6 +120,21 @@ func newGetTicketCmd(cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringP("output", "o", "", "output format: table, json, or yaml (overrides config)")
+	return cmd
+}
+
+func newClearCacheCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "clear-cache",
+		Short: "delete locally cached tickets",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			project, _ := cmd.Root().PersistentFlags().GetString("project")
+			force, _ := cmd.Flags().GetBool("force")
+			return command.ClearCache(cfg, project, force)
+		},
+	}
+	cmd.Flags().BoolP("force", "f", false, "skip the confirmation prompt")
 	return cmd
 }
 

@@ -128,3 +128,61 @@ func TestStorageLayout(t *testing.T) {
 		t.Errorf("expected ticket file at %s: %v", want, err)
 	}
 }
+
+func TestClearAll(t *testing.T) {
+	s := newTestStorage(t)
+	if err := s.WriteSprintManifest("A", 1, "S", []*models.Ticket{{Key: "A-1", Project: "A"}}); err != nil {
+		t.Fatalf("WriteSprintManifest: %v", err)
+	}
+	if err := s.WriteSprintManifest("B", 1, "S", []*models.Ticket{{Key: "B-1", Project: "B"}}); err != nil {
+		t.Fatalf("WriteSprintManifest: %v", err)
+	}
+
+	removed, err := s.Clear("")
+	if err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if removed != 2 {
+		t.Errorf("removed = %d, want 2", removed)
+	}
+
+	entries, err := os.ReadDir(s.base)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("base dir not empty after Clear: %d entries", len(entries))
+	}
+}
+
+func TestClearProjectOnly(t *testing.T) {
+	s := newTestStorage(t)
+	if err := s.WriteSprintManifest("A", 1, "S", []*models.Ticket{{Key: "A-1", Project: "A"}}); err != nil {
+		t.Fatalf("WriteSprintManifest: %v", err)
+	}
+	if err := s.WriteSprintManifest("B", 1, "S", []*models.Ticket{{Key: "B-1", Project: "B"}}); err != nil {
+		t.Fatalf("WriteSprintManifest: %v", err)
+	}
+
+	if _, err := s.Clear("a"); err != nil { // lowercase should still match PROJ dir
+		t.Fatalf("Clear(A): %v", err)
+	}
+
+	if _, err := s.ReadSprintManifest("A"); err == nil {
+		t.Error("expected project A manifest to be removed")
+	}
+	if _, err := s.ReadSprintManifest("B"); err != nil {
+		t.Errorf("expected project B manifest to remain: %v", err)
+	}
+}
+
+func TestClearEmptyCache(t *testing.T) {
+	s := newTestStorage(t)
+	removed, err := s.Clear("")
+	if err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if removed != 0 {
+		t.Errorf("removed = %d, want 0", removed)
+	}
+}

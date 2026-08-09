@@ -155,3 +155,38 @@ func (s *Storage) ReadSprintTickets(project string) ([]*models.Ticket, error) {
 
 	return tickets, nil
 }
+
+// Clear removes cached tickets and sprint manifests. When project is empty,
+// the entire storage base is wiped; otherwise only that project's directory
+// is removed. Returns the number of files removed.
+func (s *Storage) Clear(project string) (int, error) {
+	var target string
+	if project == "" {
+		target = s.base
+	} else {
+		target = filepath.Join(s.base, strings.ToUpper(project))
+	}
+
+	info, err := os.Stat(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to stat %s: %w", target, err)
+	}
+	if !info.IsDir() {
+		return 0, fmt.Errorf("cache path %s is not a directory", target)
+	}
+
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read cache dir %s: %w", target, err)
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(target, entry.Name())); err != nil {
+			return 0, fmt.Errorf("failed to remove %s: %w", filepath.Join(target, entry.Name()), err)
+		}
+	}
+
+	return len(entries), nil
+}
