@@ -12,6 +12,7 @@ func PullTicket(cfg *config.Config, ticketNum string) error {
 	logStep(cfg.Verbose, "creating Jira client for %s", cfg.Jira.URL)
 
 	c := client.NewJiraClient(cfg.Jira.URL, cfg.Jira.Email, cfg.Jira.APIToken, cfg.Jira.TimeoutSeconds)
+	c.SetVerbose(cfg.Verbose)
 
 	logStep(cfg.Verbose, "fetching ticket %s-%s from Jira", cfg.Defaults.Project, ticketNum)
 	ticket, err := c.FetchTicket(cfg.Defaults.Project, ticketNum)

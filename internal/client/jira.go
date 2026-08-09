@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"xynapse/internal/models"
@@ -17,6 +18,7 @@ type JiraClient struct {
 	email      string
 	apiToken   string
 	httpClient *http.Client
+	verbose    bool
 }
 
 func NewJiraClient(baseURL, email, apiToken string, timeout int) *JiraClient {
@@ -30,6 +32,18 @@ func NewJiraClient(baseURL, email, apiToken string, timeout int) *JiraClient {
 	}
 }
 
+// SetVerbose toggles step-by-step logging to stderr.
+func (c *JiraClient) SetVerbose(verbose bool) {
+	c.verbose = verbose
+}
+
+func (c *JiraClient) logf(format string, args ...any) {
+	if !c.verbose {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[jira] "+format+"\n", args...)
+}
+
 // Helper to construct basic auth header
 func (c *JiraClient) applyHeaders(req *http.Request) {
 	auth := fmt.Sprintf("%s:%s", c.email, c.apiToken)
@@ -38,6 +52,16 @@ func (c *JiraClient) applyHeaders(req *http.Request) {
 	req.Header.Set("Authorization", fmt.Sprintf("Basic %s", encodedAuth))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+}
+
+func (c *JiraClient) do(req *http.Request) (*http.Response, error) {
+	c.logf("GET %s", req.URL.String())
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	c.logf("response status %d", resp.StatusCode)
+	return resp, nil
 }
 
 func (c *JiraClient) FetchTicket(project string, ticketNum string) (*models.Ticket, error) {
@@ -50,7 +74,7 @@ func (c *JiraClient) FetchTicket(project string, ticketNum string) (*models.Tick
 	}
 	c.applyHeaders(req)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("network error fetching issue %s: %w", issueKey, err)
 	}
@@ -61,11 +85,13 @@ func (c *JiraClient) FetchTicket(project string, ticketNum string) (*models.Tick
 		return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
 	}
 
+	c.logf("decoding issue %s response", issueKey)
 	var rawIssue models.JiraRawIssue
 	if err := json.NewDecoder(resp.Body).Decode(&rawIssue); err != nil {
 		return nil, fmt.Errorf("failed to parse issue JSON: %w", err)
 	}
 
+	c.logf("mapping issue %s to ticket model", issueKey)
 	ticket := models.MapRawToTicket(&rawIssue)
 	return ticket, nil
 }
@@ -90,7 +116,8 @@ func (c *JiraClient) FetchSprintTickets(project string) ([]*models.Ticket, error
 		}
 		c.applyHeaders(req)
 
-		resp, err := c.httpClient.Do(req)
+		c.logf("search startAt=%d jql=%s", startAt, jql)
+		resp, err := c.do(req)
 		if err != nil {
 			return nil, fmt.Errorf("network error fetching sprint issues: %w", err)
 		}
@@ -101,9 +128,9 @@ func (c *JiraClient) FetchSprintTickets(project string) ([]*models.Ticket, error
 		}
 
 		var result struct {
-			Issues      []models.JiraRawIssue `json:"issues"`
-			Total       int                    `json:"total"`
-			MaxResults  int                    `json:"maxResults"`
+			Issues     []models.JiraRawIssue `json:"issues"`
+			Total      int                    `json:"total"`
+			MaxResults int                    `json:"maxResults"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 			resp.Body.Close()
@@ -112,12 +139,14 @@ func (c *JiraClient) FetchSprintTickets(project string) ([]*models.Ticket, error
 		resp.Body.Close()
 
 		allIssues = append(allIssues, result.Issues...)
+		c.logf("page returned %d issues (total %d)", len(result.Issues), result.Total)
 		if len(allIssues) >= result.Total {
 			break
 		}
 		startAt += len(result.Issues)
 	}
 
+	c.logf("mapping %d issue(s) to ticket models", len(allIssues))
 	tickets := make([]*models.Ticket, 0, len(allIssues))
 	for i := range allIssues {
 		tickets = append(tickets, models.MapRawToTicket(&allIssues[i]))
