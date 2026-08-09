@@ -164,14 +164,16 @@ func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []st
 	}
 
 	var allIssues []models.JiraRawIssue
-	startAt := 0
+	nextPageToken := ""
 	for {
 		params := url.Values{}
 		params.Set("jql", jql)
-		params.Set("startAt", fmt.Sprintf("%d", startAt))
 		params.Set("maxResults", "50")
 		params.Set("fields", "summary, description, project, status, assignee, updated, id, key, issuetype")
-		endpoint := fmt.Sprintf("%s/rest/api/3/search?%s", c.baseURL, params.Encode())
+		if nextPageToken != "" {
+			params.Set("nextPageToken", nextPageToken)
+		}
+		endpoint := fmt.Sprintf("%s/rest/api/3/search/jql?%s", c.baseURL, params.Encode())
 
 		req, err := http.NewRequest("GET", endpoint, nil)
 		if err != nil {
@@ -179,7 +181,7 @@ func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []st
 		}
 		c.applyHeaders(req)
 
-		c.logf("search startAt=%d jql=%s", startAt, jql)
+		c.logf("search jql=%s", jql)
 		resp, err := c.do(req)
 		if err != nil {
 			return nil, fmt.Errorf("network error fetching sprint issues: %w", err)
@@ -191,9 +193,9 @@ func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []st
 		}
 
 		var result struct {
-			Issues     []models.JiraRawIssue `json:"issues"`
-			Total      int                   `json:"total"`
-			MaxResults int                   `json:"maxResults"`
+			Issues        []models.JiraRawIssue `json:"issues"`
+			NextPageToken string                `json:"nextPageToken"`
+			IsLast        bool                  `json:"isLast"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 			resp.Body.Close()
@@ -202,11 +204,11 @@ func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []st
 		resp.Body.Close()
 
 		allIssues = append(allIssues, result.Issues...)
-		c.logf("page returned %d issues (total %d)", len(result.Issues), result.Total)
-		if len(allIssues) >= result.Total {
+		c.logf("page returned %d issues (isLast=%t)", len(result.Issues), result.IsLast)
+		if result.IsLast {
 			break
 		}
-		startAt += len(result.Issues)
+		nextPageToken = result.NextPageToken
 	}
 
 	c.logf("mapping %d issue(s) to ticket models", len(allIssues))
