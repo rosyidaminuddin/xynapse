@@ -20,10 +20,14 @@ jira:
 
 defaults:
   project: "MERADIO"
+  board_id: "561"        # optional: used by pull-sprint to resolve the active sprint
   output_format: "table" # table, json, or yaml
 
 storage:
   base: "storage"
+
+expiration:
+  hours: 24              # get commands auto-refresh cached data older than this; 0 disables
 ```
 
 Credentials are resolved from (highest priority first):
@@ -38,6 +42,12 @@ Credentials are resolved from (highest priority first):
 
 ```sh
 go build -o bin/xynapse .
+```
+
+## Test
+
+```sh
+go test ./...
 ```
 
 ## Run
@@ -62,18 +72,32 @@ go build -o bin/xynapse .
 ./bin/xynapse get-sprint -t Epic
 ```
 
-All commands accept `-v` (or `--verbose`) to log every step to stderr:
+### Ticket references
+
+`pull-ticket` and `get-ticket` accept a bare number, a full key, or a browse URL:
 
 ```sh
-./bin/xynapse -v pull-ticket 123
+./bin/xynapse get-ticket 123
+./bin/xynapse get-ticket MERADIO-123
+./bin/xynapse get-ticket https://yourcompany.atlassian.net/browse/MERADIO-123
 ```
 
-The `-t`/`--type` flag takes a comma-separated list of issue types (e.g. `Story,Bug,Epic`). For `pull-sprint` it is applied as a JQL `issuetype in (...)` filter on the server; for `get-sprint` it filters the locally cached tickets.
+### Flags
 
-Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`. When `board_id` is configured, `pull-sprint` looks up the active sprint via the Jira Agile API and stores its `sprint_id` and `sprint_name` in the manifest.
+- `-v`, `--verbose` — log every step to stderr
+- `-p`, `--project <KEY>` — override the default project for this invocation
+- `-t`, `--type <types>` — comma-separated issue types (e.g. `Story,Bug,Epic`). For `pull-sprint` it is applied as a JQL `issuetype in (...)` filter on the server; for `get-sprint` it filters the locally cached tickets.
+
+### Cache expiration
+
+When cached data is older than `expiration.hours`, `get-ticket` and `get-sprint` automatically re-pull from Jira before printing. Set `expiration.hours` to `0` to disable.
+
+### Storage layout
+
+Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`. When `board_id` is configured, `pull-sprint` looks up the active sprint via the Jira Agile API and stores its `sprint_id` and `sprint_name` in the manifest. Each ticket keeps both the raw ADF description JSON (`description`) and a flattened plain-text copy (`description_text`).
 
 ## Help
 
 ```sh
-./bin/xynapse help
+./bin/xynapse --help
 ```

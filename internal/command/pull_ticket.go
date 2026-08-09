@@ -8,14 +8,17 @@ import (
 	"xynapse/internal/storage"
 )
 
-func PullTicket(cfg *config.Config, ticketNum string) error {
+func PullTicket(cfg *config.Config, ticketRef string) error {
+	project, number, err := ParseTicketRef(ticketRef, cfg.Defaults.Project)
+	if err != nil {
+		return err
+	}
+
 	logStep(cfg.Verbose, "creating Jira client for %s", cfg.Jira.URL)
-
 	c := client.NewJiraClient(cfg.Jira.URL, cfg.Jira.Email, cfg.Jira.APIToken, cfg.Jira.TimeoutSeconds)
-	c.SetVerbose(cfg.Verbose)
 
-	logStep(cfg.Verbose, "fetching ticket %s-%s from Jira", cfg.Defaults.Project, ticketNum)
-	ticket, err := c.FetchTicket(cfg.Defaults.Project, ticketNum)
+	logStep(cfg.Verbose, "fetching ticket %s-%s from Jira", project, number)
+	ticket, err := c.FetchTicket(project, number)
 	if err != nil {
 		return err
 	}
@@ -27,6 +30,6 @@ func PullTicket(cfg *config.Config, ticketNum string) error {
 		return err
 	}
 
-	fmt.Printf("Pulled %s (%s) to %s/%s.yml\n", ticket.Key, ticket.Status, cfg.Storage.Base, ticket.Project)
+	fmt.Printf("Pulled %s (%s) to %s\n", ticket.Key, ticket.Status, cfg.Storage.Base)
 	return nil
 }

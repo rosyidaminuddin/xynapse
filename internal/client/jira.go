@@ -2,13 +2,14 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -20,7 +21,6 @@ type JiraClient struct {
 	email      string
 	apiToken   string
 	httpClient *http.Client
-	verbose    bool
 }
 
 func NewJiraClient(baseURL, email, apiToken string, timeout int) *JiraClient {
@@ -34,18 +34,6 @@ func NewJiraClient(baseURL, email, apiToken string, timeout int) *JiraClient {
 	}
 }
 
-// SetVerbose toggles step-by-step logging to stderr.
-func (c *JiraClient) SetVerbose(verbose bool) {
-	c.verbose = verbose
-}
-
-func (c *JiraClient) logf(format string, args ...any) {
-	if !c.verbose {
-		return
-	}
-	fmt.Fprintf(os.Stderr, "[jira] "+format+"\n", args...)
-}
-
 // Helper to construct basic auth header
 func (c *JiraClient) applyHeaders(req *http.Request) {
 	auth := fmt.Sprintf("%s:%s", c.email, c.apiToken)
@@ -57,14 +45,14 @@ func (c *JiraClient) applyHeaders(req *http.Request) {
 }
 
 func (c *JiraClient) do(req *http.Request) (*http.Response, error) {
-	c.logf("GET %s", req.URL.String())
+	slog.Debug("jira request", "method", req.Method, "url", req.URL.String())
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	c.logf("response status %d", resp.StatusCode)
+	slog.Debug("jira response", "status", resp.StatusCode)
 
-	if c.verbose {
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			resp.Body.Close()
@@ -72,7 +60,7 @@ func (c *JiraClient) do(req *http.Request) (*http.Response, error) {
 		}
 		resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(body))
-		c.logf("response body: %s", string(body))
+		slog.Debug("jira response body", "body", string(body))
 	}
 
 	return resp, nil
@@ -99,13 +87,12 @@ func (c *JiraClient) FetchTicket(project string, ticketNum string) (*models.Tick
 		return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
 	}
 
-	c.logf("decoding issue %s response", issueKey)
+	slog.Debug("decoding issue", "key", issueKey)
 	var rawIssue models.JiraRawIssue
 	if err := json.NewDecoder(resp.Body).Decode(&rawIssue); err != nil {
 		return nil, fmt.Errorf("failed to parse issue JSON: %w", err)
 	}
 
-	c.logf("mapping issue %s to ticket model", issueKey)
 	ticket := models.MapRawToTicket(&rawIssue)
 	return ticket, nil
 }
@@ -120,7 +107,7 @@ func (c *JiraClient) FetchActiveSprint(boardID string) (*models.Sprint, error) {
 	}
 	c.applyHeaders(req)
 
-	c.logf("fetching active sprint for board %s", boardID)
+	slog.Debug("fetching active sprint", "board_id", boardID)
 	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("network error fetching active sprint: %w", err)
@@ -147,10 +134,9 @@ func (c *JiraClient) FetchActiveSprint(boardID string) (*models.Sprint, error) {
 	return nil, fmt.Errorf("no active sprint found for board %s", boardID)
 }
 
-// FetchSprintTickets fetches all issues in the current active sprint assigned to the
-// authenticated user, optionally filtered by issue type(s). Uses JQL so only open
-// sprints for the user's projects are queried.
-func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []string) ([]*models.Ticket, error) {
+// BuildSprintJQL constructs the JQL query for the current active sprint of the
+// authenticated user, optionally scoped to the given sprint and issue types.
+func BuildSprintJQL(project string, sprintID int, types []string) string {
 	jql := fmt.Sprintf("project = %q AND sprint in openSprints() AND assignee = currentUser()", project)
 	if sprintID > 0 {
 		jql = fmt.Sprintf("project = %q AND sprint = %d AND assignee = currentUser()", project, sprintID)
@@ -162,9 +148,15 @@ func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []st
 		}
 		jql += fmt.Sprintf(" AND issuetype in (%s)", strings.Join(quoted, ","))
 	}
+	return jql
+}
 
+// SearchIssues runs a JQL query against the enhanced search endpoint
+// (/rest/api/3/search/jql), following nextPageToken pagination.
+func (c *JiraClient) SearchIssues(jql string) ([]models.JiraRawIssue, error) {
 	var allIssues []models.JiraRawIssue
 	nextPageToken := ""
+
 	for {
 		params := url.Values{}
 		params.Set("jql", jql)
@@ -181,10 +173,10 @@ func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []st
 		}
 		c.applyHeaders(req)
 
-		c.logf("search jql=%s", jql)
+		slog.Debug("jira search", "jql", jql, "nextPageToken", nextPageToken)
 		resp, err := c.do(req)
 		if err != nil {
-			return nil, fmt.Errorf("network error fetching sprint issues: %w", err)
+			return nil, fmt.Errorf("network error searching issues: %w", err)
 		}
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -204,17 +196,29 @@ func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []st
 		resp.Body.Close()
 
 		allIssues = append(allIssues, result.Issues...)
-		c.logf("page returned %d issues (isLast=%t)", len(result.Issues), result.IsLast)
+		slog.Debug("jira search page", "issues", len(result.Issues), "is_last", result.IsLast)
 		if result.IsLast {
 			break
 		}
 		nextPageToken = result.NextPageToken
 	}
 
-	c.logf("mapping %d issue(s) to ticket models", len(allIssues))
-	tickets := make([]*models.Ticket, 0, len(allIssues))
-	for i := range allIssues {
-		tickets = append(tickets, models.MapRawToTicket(&allIssues[i]))
+	return allIssues, nil
+}
+
+// FetchSprintTickets fetches all issues in the current active sprint assigned to the
+// authenticated user, optionally filtered by issue type(s).
+func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []string) ([]*models.Ticket, error) {
+	jql := BuildSprintJQL(project, sprintID, types)
+
+	issues, err := c.SearchIssues(jql)
+	if err != nil {
+		return nil, err
+	}
+
+	tickets := make([]*models.Ticket, 0, len(issues))
+	for i := range issues {
+		tickets = append(tickets, models.MapRawToTicket(&issues[i]))
 	}
 	return tickets, nil
 }

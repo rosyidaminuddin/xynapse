@@ -2,106 +2,113 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
-	"strings"
+
+	"github.com/spf13/cobra"
 
 	"xynapse/internal/command"
 	"xynapse/internal/config"
 )
 
 func main() {
-	cfg, err := config.Load("config/config.yaml", ".env")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	if err := newRootCmd().Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
 
+func newRootCmd() *cobra.Command {
+	cfg := &config.Config{}
 	var verbose bool
-	var types []string
-	var positional []string
-	args := os.Args[1:]
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "-v" || a == "--verbose":
-			verbose = true
-		case a == "-t" || a == "--type":
-			if i+1 >= len(args) {
-				fmt.Fprintln(os.Stderr, "error: flag -t/--type requires a value")
-				os.Exit(1)
+	var project string
+
+	root := &cobra.Command{
+		Use:   "xynapse",
+		Short: "Manage Jira tickets locally",
+		Long: `xynapse fetches Jira tickets and stores them as local YAML files
+so get commands can read them without hitting the server.`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			level := slog.LevelWarn
+			if verbose {
+				level = slog.LevelDebug
 			}
-			i++
-			types = splitTypes(args[i])
-		case strings.HasPrefix(a, "--type="):
-			types = splitTypes(strings.TrimPrefix(a, "--type="))
-		case strings.HasPrefix(a, "-t="):
-			types = splitTypes(strings.TrimPrefix(a, "-t="))
-		default:
-			positional = append(positional, a)
-		}
-	}
-	cfg.Verbose = verbose
+			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
-	if len(positional) == 0 {
-		usage()
-		os.Exit(1)
-	}
+			loaded, err := config.Load("config/config.yaml", ".env")
+			if err != nil {
+				return err
+			}
+			*cfg = *loaded
+			cfg.Verbose = verbose
 
-	switch positional[0] {
-	case "pull-ticket":
-		if len(positional) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: xynapse pull-ticket <ticket-number>")
-			os.Exit(1)
-		}
-		err = command.PullTicket(cfg, positional[1])
-	case "pull-sprint":
-		err = command.PullSprint(cfg, types)
-	case "get-ticket":
-		if len(positional) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: xynapse get-ticket <ticket-number>")
-			os.Exit(1)
-		}
-		err = command.GetTicket(cfg, positional[1])
-	case "get-sprint":
-		err = command.GetSprint(cfg, types)
-	case "help", "-h", "--help":
-		usage()
-		return
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n", positional[0])
-		usage()
-		os.Exit(1)
+			if project != "" {
+				cfg.Defaults.Project = project
+			}
+
+			return cfg.Validate()
+		},
 	}
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "log every step to stderr")
+	root.PersistentFlags().StringVarP(&project, "project", "p", "", "override the default project key")
+
+	root.AddCommand(
+		newPullTicketCmd(cfg),
+		newPullSprintCmd(cfg),
+		newGetTicketCmd(cfg),
+		newGetSprintCmd(cfg),
+	)
+
+	return root
+}
+
+func newPullTicketCmd(cfg *config.Config) *cobra.Command {
+	return &cobra.Command{
+		Use:   "pull-ticket <ticket-number|key|url>",
+		Short: "fetch a ticket from Jira and write it as yaml",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return command.PullTicket(cfg, args[0])
+		},
 	}
 }
 
-// splitTypes splits a comma-separated type list into trimmed non-empty values.
-func splitTypes(s string) []string {
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
+func newPullSprintCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "pull-sprint",
+		Short: "fetch all tickets in the current sprint for the current user",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			types, _ := cmd.Flags().GetStringSlice("type")
+			return command.PullSprint(cfg, types)
+		},
 	}
-	return out
+	cmd.Flags().StringSliceP("type", "t", nil, "comma-separated issue types to filter by (e.g. Story,Bug,Epic)")
+	return cmd
 }
 
-func usage() {
-	fmt.Println(`xynapse - manage Jira tickets locally
+func newGetTicketCmd(cfg *config.Config) *cobra.Command {
+	return &cobra.Command{
+		Use:   "get-ticket <ticket-number|key|url>",
+		Short: "read a ticket from local yaml",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return command.GetTicket(cfg, args[0])
+		},
+	}
+}
 
-usage:
-  xynapse [-v] pull-ticket <ticket-number>   fetch a ticket from Jira and write it as yaml
-  xynapse [-v] [-t <type>] pull-sprint        fetch all tickets in the current sprint for the current user
-  xynapse [-v] get-ticket <ticket-number>     read a ticket from local yaml
-  xynapse [-v] [-t <type>] get-sprint         list all tickets from the active sprint
-
-flags:
-  -v, --verbose           log every step to stderr
-  -t, --type <types>      comma-separated issue types to filter by (e.g. Story,Bug,Epic)`)
+func newGetSprintCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "get-sprint",
+		Short: "list all tickets from the active sprint",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			types, _ := cmd.Flags().GetStringSlice("type")
+			return command.GetSprint(cfg, types)
+		},
+	}
+	cmd.Flags().StringSliceP("type", "t", nil, "comma-separated issue types to filter by (e.g. Story,Bug,Epic)")
+	return cmd
 }

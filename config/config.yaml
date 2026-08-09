@@ -1,7 +1,7 @@
 # Jira Connection Settings
 jira:
-  url: "" 
-  email: "" 
+  url: ""
+  email: ""
   api_token: ""
   timeout_seconds: 15
 
@@ -11,30 +11,12 @@ defaults:
   board_id: "561"                 # Optional default board ID for sprint queries
   output_format: "table"       # Terminal output style: table, json, or yaml
 
-# Local Storage Architecture Settings
+# Local Storage Settings
 storage:
-  # Base directory where all ticket YAML files are stored
   base: "storage"
-  
-  # Organization pattern for issue files:
-  # Available variables: {project}, {sprint}, {key}, {number}
-  file_pattern: "{project}/{sprint}/{key}.yml"
-  
-  # Location of current sprint metadata/manifest
-  sprint_manifest_path: "{project}/sprints/current.yml"
 
-# Cache & Sync Rules
-cache:
-  # Warn user if local YAML data is older than this threshold (in hours)
-  warn_stale_hours: 24
-  
-  # Automatically refresh local YAML from Jira server when running 'get' or 'current sprint'
-  auto_refresh: false
-
-# Jira Field Mapping Strategy
-fields:
-  # Include custom fields in the fetched output YAML under a 'custom_fields' key
-  include_custom_fields: false
-  
-  # Automatically fetch sub-tasks when pulling a parent ticket
-  include_subtasks: false 
+# Cache Expiration (hours)
+# When a locally cached ticket or sprint is older than this, get commands
+# auto-refresh it from the Jira server. Set to 0 to disable auto-refresh.
+expiration:
+  hours: 24

@@ -12,7 +12,6 @@ func PullSprint(cfg *config.Config, types []string) error {
 	logStep(cfg.Verbose, "creating Jira client for %s", cfg.Jira.URL)
 
 	c := client.NewJiraClient(cfg.Jira.URL, cfg.Jira.Email, cfg.Jira.APIToken, cfg.Jira.TimeoutSeconds)
-	c.SetVerbose(cfg.Verbose)
 
 	var sprintID int
 	var sprintName string

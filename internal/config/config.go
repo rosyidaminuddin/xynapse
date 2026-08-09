@@ -4,15 +4,17 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Jira     JiraConfig     `yaml:"jira"`
-	Defaults Defaults       `yaml:"defaults"`
-	Storage  StorageConfig  `yaml:"storage"`
-	Verbose  bool           `yaml:"-"`
+	Jira       JiraConfig      `yaml:"jira"`
+	Defaults   Defaults        `yaml:"defaults"`
+	Storage    StorageConfig   `yaml:"storage"`
+	Expiration Expiration      `yaml:"expiration"`
+	Verbose    bool            `yaml:"-"`
 }
 
 type JiraConfig struct {
@@ -30,6 +32,20 @@ type Defaults struct {
 
 type StorageConfig struct {
 	Base string `yaml:"base"`
+}
+
+// Expiration controls how long locally cached tickets stay fresh before
+// get commands auto-refresh them from the server.
+type Expiration struct {
+	Hours int `yaml:"hours"`
+}
+
+// Duration returns the expiry window as a time.Duration (0 when disabled).
+func (e Expiration) Duration() time.Duration {
+	if e.Hours <= 0 {
+		return 0
+	}
+	return time.Duration(e.Hours) * time.Hour
 }
 
 // Load reads the YAML config and overlays environment variables (including a local .env file).
@@ -67,6 +83,23 @@ func Load(path, envPath string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// Validate checks that required configuration is present before any command runs.
+func (c *Config) Validate() error {
+	if c.Jira.URL == "" {
+		return fmt.Errorf("config error: jira.url is required (set it in config/config.yaml or JIRA_URL)")
+	}
+	if c.Jira.Email == "" {
+		return fmt.Errorf("config error: jira.email is required (set it in config/config.yaml or JIRA_EMAIL)")
+	}
+	if c.Jira.APIToken == "" {
+		return fmt.Errorf("config error: jira.api_token is required (set it in config/config.yaml or JIRA_API_TOKEN)")
+	}
+	if c.Defaults.Project == "" {
+		return fmt.Errorf("config error: defaults.project is required")
+	}
+	return nil
 }
 
 func loadEnvFile(path string) {
