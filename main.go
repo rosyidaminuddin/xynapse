@@ -164,12 +164,14 @@ func newImplementCmd(cfg *config.Config) *cobra.Command {
 				model = cfg.Opencode.Model
 			}
 			planPath, _ := cmd.Flags().GetString("plan")
-			return command.Implement(cfg, args[0], planPath, dir, model)
+			force, _ := cmd.Flags().GetBool("force")
+			return command.Implement(cfg, args[0], planPath, dir, model, force)
 		},
 	}
 	cmd.Flags().String("dir", "", "target repo directory (default: current working directory)")
 	cmd.Flags().String("model", "", "override the opencode model")
 	cmd.Flags().String("plan", "", "path to the plan file (default: <storage>/plans/<KEY>.md)")
+	cmd.Flags().BoolP("force", "f", false, "skip the stale-plan confirmation prompt")
 	return cmd
 }
 

@@ -43,11 +43,11 @@ func printTable(tickets []*models.Ticket) {
 	w.Flush()
 }
 
-// SprintTicket annotates a ticket with whether it has a saved implementation
-// plan, for sprint listing output.
+// SprintTicket annotates a ticket with its plan status for sprint listing
+// output: "yes", "stale", or "no".
 type SprintTicket struct {
 	*models.Ticket
-	Plan bool `json:"plan" yaml:"plan"`
+	Plan string `json:"plan" yaml:"plan"`
 }
 
 func printSprintTickets(format string, tickets []SprintTicket) error {
@@ -74,11 +74,7 @@ func printSprintTable(tickets []SprintTicket) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 	fmt.Fprintln(w, "KEY\tSTATUS\tPLAN\tTYPE\tASSIGNEE\tSUMMARY")
 	for _, t := range tickets {
-		plan := "no"
-		if t.Plan {
-			plan = "yes"
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", t.Key, t.Status, plan, t.Type, t.Assignee, t.Summary)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", t.Key, t.Status, t.Plan, t.Type, t.Assignee, t.Summary)
 	}
 	w.Flush()
 }

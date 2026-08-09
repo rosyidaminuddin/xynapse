@@ -3,6 +3,7 @@ package command
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -148,10 +149,45 @@ func captureStdout(t *testing.T, f func()) string {
 	return string(out)
 }
 
+func captureStderr(t *testing.T, f func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+	f()
+	w.Close()
+	out, _ := io.ReadAll(r)
+	return string(out)
+}
+
+func withStdin(t *testing.T, input string, f func()) {
+	t.Helper()
+	old := os.Stdin
+	tmp := filepath.Join(t.TempDir(), "stdin")
+	if err := os.WriteFile(tmp, []byte(input), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fh, err := os.Open(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdin = fh
+	defer func() {
+		os.Stdin = old
+		fh.Close()
+	}()
+	f()
+}
+
 func TestPrintSprintTicketsPlanStatus(t *testing.T) {
 	views := []SprintTicket{
-		{Ticket: &models.Ticket{Key: "PROJ-1", Status: "Open", Assignee: "A", Summary: "S1"}, Plan: true},
-		{Ticket: &models.Ticket{Key: "PROJ-2", Status: "Done", Assignee: "B", Summary: "S2"}, Plan: false},
+		{Ticket: &models.Ticket{Key: "PROJ-1", Status: "Open", Assignee: "A", Summary: "S1"}, Plan: PlanFresh},
+		{Ticket: &models.Ticket{Key: "PROJ-2", Status: "Done", Assignee: "B", Summary: "S2"}, Plan: PlanStale},
+		{Ticket: &models.Ticket{Key: "PROJ-3", Status: "Open", Assignee: "C", Summary: "S3"}, Plan: PlanNone},
 	}
 
 	table := captureStdout(t, func() {
@@ -159,7 +195,7 @@ func TestPrintSprintTicketsPlanStatus(t *testing.T) {
 			t.Errorf("printSprintTickets: %v", err)
 		}
 	})
-	for _, want := range []string{"KEY", "PLAN", "yes", "no"} {
+	for _, want := range []string{"KEY", "PLAN", "yes", "stale", "no"} {
 		if !strings.Contains(table, want) {
 			t.Errorf("table missing %q:\n%s", want, table)
 		}
@@ -170,7 +206,7 @@ func TestPrintSprintTicketsPlanStatus(t *testing.T) {
 			t.Errorf("printSprintTickets json: %v", err)
 		}
 	})
-	for _, want := range []string{`"Key": "PROJ-1"`, `"plan": true`, `"plan": false`} {
+	for _, want := range []string{`"Key": "PROJ-1"`, `"plan": "yes"`, `"plan": "stale"`, `"plan": "no"`} {
 		if !strings.Contains(js, want) {
 			t.Errorf("json missing %q:\n%s", want, js)
 		}

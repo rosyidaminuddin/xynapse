@@ -41,7 +41,7 @@ func GetSprint(cfg *config.Config, types []string) error {
 	for _, ticket := range tickets {
 		views = append(views, SprintTicket{
 			Ticket: ticket,
-			Plan:   s.HasPlan(cfg.Defaults.Project, ticket.Key),
+			Plan:   planStatus(s, cfg.Defaults.Project, ticket.Key, ticket.UpdatedAt),
 		})
 	}
 

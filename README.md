@@ -87,7 +87,7 @@ go test ./...
 # Read a ticket from local YAML (no server call)
 ./bin/xynapse get-ticket 123
 
-# List all tickets from the active sprint from local YAML (PLAN column shows whether each has a saved plan)
+# List all tickets from the active sprint from local YAML (PLAN: yes/stale/no)
 ./bin/xynapse get-sprint
 
 # List only Epic tickets from the active sprint
@@ -126,7 +126,7 @@ go test ./...
 - `-p`, `--project <KEY>` — override the default project for this invocation
 - `-t`, `--type <types>` — comma-separated issue types (e.g. `Story,Bug,Epic`). For `pull-sprint` it is applied as a JQL `issuetype in (...)` filter on the server; for `get-sprint` it filters the locally cached tickets.
 - `-o`, `--output <format>` — output format for `get-ticket`: `table`, `json`, or `yaml` (overrides config)
-- `-f`, `--force` — skip the confirmation prompt (used with `clear-cache`)
+- `-f`, `--force` — skip the confirmation prompt (`clear-cache`) or the stale-plan confirmation (`implement`)
 - `--dir <repo>` — target repo directory for `plan`/`implement` (defaults to `opencode.dir`, then cwd)
 - `--model <provider/model>` — override the opencode model for `plan`/`implement`
 - `--plan <path>` — use a specific plan file for `implement` (default: `<storage>/plans/<KEY>.md`)
@@ -138,6 +138,8 @@ go test ./...
 - `xynapse plan <ref>` — fetches/refreshes the ticket, runs the `analyze-ticket` skill to produce a step-by-step implementation plan, and saves it to `<storage>/plans/<KEY>.md`.
 - `xynapse implement <ref>` — runs the `implement-plan` skill in the target repo to execute the saved plan. The agent leaves changes in the working tree; it does not commit or push.
 - `xynapse show-plan <ref>` — displays a ticket's saved plan from `<storage>/plans/<KEY>.md` as styled markdown (works without a cached ticket).
+
+A plan is **stale** when the ticket changed on Jira after it was written. `get-sprint` reflects this in the PLAN column (`yes`/`stale`/`no`), and `show-plan` warns on stderr. `implement` warns and asks for confirmation before running a stale plan; pass `--force` to skip the prompt. Staleness is only checked when the ticket is cached — plan-only workflows keep working offline.
 
 While opencode works, its activity is streamed live to stderr — each tool call (bash command, file edit, read, etc.) is printed as `  [tool] title` the moment it runs — so you can watch what the agent is doing in the terminal. Assistant text is shown once, when the command finishes.
 

@@ -61,6 +61,16 @@ func (s *Storage) HasPlan(project, ticketKey string) bool {
 	return err == nil
 }
 
+// PlanModTime returns the modification time of a ticket's saved plan file.
+// ok is false when no plan file exists.
+func (s *Storage) PlanModTime(project, ticketKey string) (modTime time.Time, ok bool) {
+	fi, err := os.Stat(s.GetPlanPath(project, ticketKey))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return fi.ModTime(), true
+}
+
 // WriteTicket serializes a single ticket model into local YAML.
 func (s *Storage) WriteTicket(ticket *models.Ticket) error {
 	filePath := s.getTicketPath(ticket.Project, ticket.Key)

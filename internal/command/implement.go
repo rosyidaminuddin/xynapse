@@ -11,11 +11,17 @@ import (
 
 // Implement runs the implement-plan skill via opencode, executing a saved
 // plan in the target repository. The plan is loaded from --plan or, by
-// default, from <storage>/plans/<KEY>.md.
-func Implement(cfg *config.Config, ticketRef, planPath, dir, model string) error {
+// default, from <storage>/plans/<KEY>.md. When the plan is stale — the
+// ticket changed after it was written — the user is asked to confirm unless
+// force is set.
+func Implement(cfg *config.Config, ticketRef, planPath, dir, model string, force bool) error {
 	s := storage.NewStorage(cfg.Storage.Base)
 	project, number, err := ParseTicketRef(ticketRef, cfg.Defaults.Project)
 	if err != nil {
+		return err
+	}
+
+	if err := confirmStale(s, project, number, ticketRef, force); err != nil {
 		return err
 	}
 

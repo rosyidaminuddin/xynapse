@@ -27,5 +27,9 @@ func ShowPlan(cfg *config.Config, ticketRef string) error {
 		return fmt.Errorf("plan %s is empty (run `xynapse plan %s` first)", planPath, ticketRef)
 	}
 
+	if msg, ok := staleWarning(s, project, number, ticketRef); ok {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", msg)
+	}
+
 	return RenderMD(os.Stdout, string(data))
 }
