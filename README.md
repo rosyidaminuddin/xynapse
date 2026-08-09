@@ -105,6 +105,9 @@ go test ./...
 # Plan against a specific repo, or execute a saved plan in it
 ./bin/xynapse plan MERADIO-123 --dir ~/work/myproject
 ./bin/xynapse implement MERADIO-123 --dir ~/work/myproject
+
+# Display a saved plan as styled markdown in the terminal
+./bin/xynapse show-plan MERADIO-123
 ```
 
 ### Ticket references
@@ -134,6 +137,7 @@ go test ./...
 
 - `xynapse plan <ref>` — fetches/refreshes the ticket, runs the `analyze-ticket` skill to produce a step-by-step implementation plan, and saves it to `<storage>/plans/<KEY>.md`.
 - `xynapse implement <ref>` — runs the `implement-plan` skill in the target repo to execute the saved plan. The agent leaves changes in the working tree; it does not commit or push.
+- `xynapse show-plan <ref>` — displays a ticket's saved plan from `<storage>/plans/<KEY>.md` as styled markdown (works without a cached ticket).
 
 While opencode works, its activity is streamed live to stderr — each tool call (bash command, file edit, read, etc.) is printed as `  [tool] title` the moment it runs — so you can watch what the agent is doing in the terminal. Assistant text is shown once, when the command finishes.
 

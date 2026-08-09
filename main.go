@@ -81,6 +81,7 @@ so get commands can read them without hitting the server.`,
 		newClearCacheCmd(cfg),
 		newPlanCmd(cfg),
 		newImplementCmd(cfg),
+		newShowPlanCmd(cfg),
 	)
 
 	return root
@@ -169,6 +170,17 @@ func newImplementCmd(cfg *config.Config) *cobra.Command {
 	cmd.Flags().String("model", "", "override the opencode model")
 	cmd.Flags().String("plan", "", "path to the plan file (default: <storage>/plans/<KEY>.md)")
 	return cmd
+}
+
+func newShowPlanCmd(cfg *config.Config) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show-plan <ticket-number|key|url>",
+		Short: "display a ticket's saved implementation plan",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return command.ShowPlan(cfg, args[0])
+		},
+	}
 }
 
 func newClearCacheCmd(cfg *config.Config) *cobra.Command {
