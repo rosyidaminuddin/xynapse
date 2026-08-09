@@ -1,6 +1,7 @@
 package command
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -98,5 +99,35 @@ func TestTicketDossierTruncatesDescription(t *testing.T) {
 	}
 	if len(d) > 4500 {
 		t.Errorf("dossier too long: %d", len(d))
+	}
+}
+
+func TestRenderMDPassthroughToBuffer(t *testing.T) {
+	md := "# Plan\n\n- step one\n- step two\n"
+	var buf strings.Builder
+	if err := RenderMD(&buf, md); err != nil {
+		t.Fatalf("RenderMD err = %v", err)
+	}
+	if buf.String() != md {
+		t.Errorf("non-terminal writer should pass through raw markdown, got:\n%q", buf.String())
+	}
+}
+
+func TestRenderMDPassthroughToFile(t *testing.T) {
+	md := "# Plan\n"
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := RenderMD(f, md); err != nil {
+		t.Fatalf("RenderMD err = %v", err)
+	}
+	got, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != md {
+		t.Errorf("file writer should pass through raw markdown, got:\n%q", string(got))
 	}
 }

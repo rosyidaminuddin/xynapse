@@ -94,7 +94,9 @@ func Plan(cfg *config.Config, ticketRef, dir, model string) error {
 		return fmt.Errorf("failed to write plan %s: %w", planPath, err)
 	}
 
-	fmt.Println(planText)
+	if err := RenderMD(os.Stdout, planText); err != nil {
+		return fmt.Errorf("failed to render plan: %w", err)
+	}
 	fmt.Printf("\nPlan saved to %s. Review it, then run: xynapse implement %s\n", planPath, ticket.Key)
 	return nil
 }

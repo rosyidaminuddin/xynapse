@@ -43,6 +43,9 @@ func Implement(cfg *config.Config, ticketRef, planPath, dir, model string) error
 	if err != nil {
 		return err
 	}
-	fmt.Print(opencode.ExtractText(out))
+	report := opencode.ExtractText(out)
+	if err := RenderMD(os.Stdout, report); err != nil {
+		return fmt.Errorf("failed to render report: %w", err)
+	}
 	return nil
 }
