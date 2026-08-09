@@ -72,13 +72,13 @@ func printSprintTickets(format string, tickets []SprintTicket) error {
 
 func printSprintTable(tickets []SprintTicket) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "KEY\tSTATUS\tPLAN\tASSIGNEE\tSUMMARY")
+	fmt.Fprintln(w, "KEY\tSTATUS\tPLAN\tTYPE\tASSIGNEE\tSUMMARY")
 	for _, t := range tickets {
 		plan := "no"
 		if t.Plan {
 			plan = "yes"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", t.Key, t.Status, plan, t.Assignee, t.Summary)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", t.Key, t.Status, plan, t.Type, t.Assignee, t.Summary)
 	}
 	w.Flush()
 }
