@@ -103,27 +103,45 @@ func resolveUser(c *client.JiraClient, user string) (*client.JiraUser, error) {
 		return &exact[0], nil
 	}
 	if len(exact) > 1 {
-		return nil, fmt.Errorf("multiple Jira users match %q; refine your query: %s",
-			user, strings.Join(formatUsers(exact), ", "))
+		return nil, fmt.Errorf("multiple Jira users match %q; refine your query:\n%s",
+			user, formatUserCandidates(exact, user))
 	}
 
 	if len(users) == 1 {
 		return &users[0], nil
 	}
-	return nil, fmt.Errorf("ambiguous Jira user %q; use a display name or full email: %s",
-		user, strings.Join(formatUsers(users), ", "))
+	return nil, fmt.Errorf("ambiguous Jira user %q; use a display name or full email:\n%s",
+		user, formatUserCandidates(users, user))
 }
 
-func formatUsers(users []client.JiraUser) []string {
-	out := make([]string, 0, len(users))
-	for _, u := range users {
+// maxShownCandidates is the number of matching users printed before eliding
+// the rest with a summary line.
+const maxShownCandidates = 3
+
+// formatUserCandidates renders a numbered, one-per-line listing of matching
+// users, capped at maxShownCandidates. Extra matches are summarized so the
+// caller can tell the query was too broad.
+func formatUserCandidates(users []client.JiraUser, query string) string {
+	shown := users
+	if len(users) > maxShownCandidates {
+		shown = users[:maxShownCandidates]
+	}
+
+	var sb strings.Builder
+	for i, u := range shown {
 		label := u.DisplayName
 		if u.Email != "" {
-			label += " (" + u.Email + ")"
+			label += " <" + u.Email + ">"
 		}
-		out = append(out, label)
+		if u.AccountID != "" {
+			label += " (" + u.AccountID + ")"
+		}
+		fmt.Fprintf(&sb, "  %d. %s\n", i+1, label)
 	}
-	return out
+	if len(users) > maxShownCandidates {
+		fmt.Fprintf(&sb, "  ... and %d more match %q\n", len(users)-maxShownCandidates, query)
+	}
+	return strings.TrimSuffix(sb.String(), "\n")
 }
 
 func isUnassignKeyword(user string) bool {

@@ -2,6 +2,7 @@ package command
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -184,8 +185,42 @@ func TestAssigneeAmbiguous(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for ambiguous user")
 	}
-	if !strings.Contains(err.Error(), "ambiguous") || !strings.Contains(err.Error(), "jane@corp.com") {
-		t.Errorf("error = %v", err)
+	for _, want := range []string{
+		"ambiguous",
+		"1. Jane Doe <jane@corp.com> (5b10a2844c20165700ede21g)",
+		"2. Jane Roe <jane@acme.com> (5b10a2844c20165700ede22h)",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error missing %q:\n%v", want, err)
+		}
+	}
+	if len(*put) != 0 {
+		t.Errorf("no PUT should happen on ambiguity, got %d", len(*put))
+	}
+}
+
+func TestAssigneeAmbiguousCapsListing(t *testing.T) {
+	var many strings.Builder
+	for i := 1; i <= 5; i++ {
+		fmt.Fprintf(&many, `{"accountId":"acct-%d","displayName":"User %d","emailAddress":"u%d@corp.com","active":true},`, i, i, i)
+	}
+	body := "[" + strings.TrimSuffix(many.String(), ",") + "]"
+
+	srv, put := assigneeServer(t, body)
+	defer srv.Close()
+	cfg := assigneeConfig(t.TempDir(), srv.URL)
+
+	err := Assignee(cfg, "PROJ-1", "User")
+	if err == nil {
+		t.Fatal("expected error for ambiguous user")
+	}
+	for _, want := range []string{"1. User 1", "2. User 2", "3. User 3", "... and 2 more match \"User\""} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error missing %q:\n%v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "4. User 4") {
+		t.Errorf("listing should be capped at 3:\n%v", err)
 	}
 	if len(*put) != 0 {
 		t.Errorf("no PUT should happen on ambiguity, got %d", len(*put))
