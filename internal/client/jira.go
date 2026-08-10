@@ -189,6 +189,64 @@ func (c *JiraClient) TransitionTicket(project, ticketNum, transitionID string) e
 	return nil
 }
 
+// AddComment posts a plain-text comment to an issue. The body is converted to
+// the Atlassian Document Format (one paragraph per line) so Jira renders it
+// as a normal comment.
+func (c *JiraClient) AddComment(project, ticketNum, body string) error {
+	issueKey := fmt.Sprintf("%s-%s", project, ticketNum)
+	endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/comment", c.baseURL, issueKey)
+
+	payload, err := json.Marshal(struct {
+		Body any `json:"body"`
+	}{Body: commentADF(body)})
+	if err != nil {
+		return fmt.Errorf("failed to encode comment request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	c.applyHeaders(req)
+
+	slog.Debug("adding comment to issue", "issue", issueKey)
+	resp, err := c.do(req)
+	if err != nil {
+		return fmt.Errorf("network error adding comment to %s: %w", issueKey, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// commentADF builds an ADF document whose paragraphs carry the lines of text,
+// skipping empty lines. This keeps the payload small while preserving
+// line breaks in the rendered comment.
+func commentADF(text string) map[string]any {
+	paragraphs := make([]any, 0)
+	for _, line := range strings.Split(text, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		paragraphs = append(paragraphs, map[string]any{
+			"type": "paragraph",
+			"content": []any{map[string]any{
+				"type": "text",
+				"text": line,
+			}},
+		})
+	}
+	return map[string]any{
+		"version": 1,
+		"type":    "doc",
+		"content": paragraphs,
+	}
+}
+
 // JiraUser is a Jira account returned by the user search endpoint.
 type JiraUser struct {
 	AccountID   string

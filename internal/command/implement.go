@@ -87,15 +87,25 @@ func resolveConfirmations(s *storage.Storage, project, number, planPath, planTex
 		return planText, nil
 	}
 
-	fmt.Fprintf(os.Stderr, "plan requires %d confirmation(s) before implementing. Answer each question; press Enter to accept the suggested default.\n\n", len(need))
-	for _, c := range need {
-		fmt.Fprintf(os.Stderr, "  %d. %s\n", c.Number, c.Question)
-	}
-	fmt.Fprintln(os.Stderr)
+	var decisions []Decision
+	if autoConfirm {
+		d, err := autoDecisions(need)
+		if err != nil {
+			return "", err
+		}
+		decisions = d
+	} else {
+		fmt.Fprintf(os.Stderr, "plan requires %d confirmation(s) before implementing. Answer each question; press Enter to accept the suggested default.\n\n", len(need))
+		for _, c := range need {
+			fmt.Fprintf(os.Stderr, "  %d. %s\n", c.Number, c.Question)
+		}
+		fmt.Fprintln(os.Stderr)
 
-	decisions, err := promptForAnswers(need, confirmReader, os.Stdout)
-	if err != nil {
-		return "", err
+		d, err := promptForAnswers(need, confirmReader, os.Stdout)
+		if err != nil {
+			return "", err
+		}
+		decisions = d
 	}
 	answered := writeDecisions(planText, decisions)
 

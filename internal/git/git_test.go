@@ -197,6 +197,54 @@ func TestCommitSubjectsEmptyRepo(t *testing.T) {
 	}
 }
 
+func TestTestCommand(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir, "")
+
+	out, err := g.Test("echo hello && echo world")
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if out != "hello\nworld" {
+		t.Errorf("Test output = %q", out)
+	}
+}
+
+func TestTestCommandFailure(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir, "")
+
+	out, err := g.Test("echo boom; exit 3")
+	if err == nil {
+		t.Fatal("expected error for failing command")
+	}
+	if !strings.Contains(out, "boom") {
+		t.Errorf("Test output should include command output, got %q", out)
+	}
+	if !strings.Contains(err.Error(), "exit status 3") {
+		t.Errorf("error should mention exit code, got %v", err)
+	}
+}
+
+func TestTestCommandEmpty(t *testing.T) {
+	g := New(initRepo(t), "")
+	if _, err := g.Test("   "); err == nil {
+		t.Error("expected error for empty command")
+	}
+}
+
+func TestTestCommandRunsInRepoDir(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir, "")
+	out, err := g.Test("git rev-parse --abbrev-ref HEAD")
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if out != "main" {
+		t.Errorf("git command should run inside the repo dir, got %q", out)
+	}
+}
+
 func contains(xs []string, want string) bool {
 	for _, x := range xs {
 		if x == want {

@@ -82,6 +82,12 @@ func unanswered(confirmations []Confirmation, decisions map[int]string) []Confir
 	return out
 }
 
+// autoConfirm, when true, makes resolveConfirmations answer plan confirmations
+// with their suggested defaults instead of prompting the user. A confirmation
+// with no suggested default is an error — drive never invents answers. Set by
+// the drive orchestrator when running with --yes.
+var autoConfirm bool
+
 // promptForAnswers asks the user for a decision on each confirmation, reading
 // lines from r and printing prompts to w. An empty input accepts the suggested
 // default (or records an empty answer when there is none). It returns an error
@@ -106,6 +112,20 @@ func promptForAnswers(confirmations []Confirmation, r io.Reader, w io.Writer) ([
 			answer = c.Default
 		}
 		decisions = append(decisions, Decision{Number: c.Number, Answer: answer})
+	}
+	return decisions, nil
+}
+
+// autoDecisions answers each confirmation with its suggested default. A
+// confirmation without a default is an error: in auto mode drive must never
+// guess an answer the user was not willing to give.
+func autoDecisions(confirmations []Confirmation) ([]Decision, error) {
+	decisions := make([]Decision, 0, len(confirmations))
+	for _, c := range confirmations {
+		if strings.TrimSpace(c.Default) == "" {
+			return nil, fmt.Errorf("confirmation %d %q has no suggested default and cannot be auto-answered; run without --yes or add a (default: ...) to the plan", c.Number, c.Question)
+		}
+		decisions = append(decisions, Decision{Number: c.Number, Answer: strings.TrimSpace(c.Default)})
 	}
 	return decisions, nil
 }

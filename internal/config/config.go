@@ -11,11 +11,15 @@ import (
 )
 
 type Config struct {
-	Jira     JiraConfig               `yaml:"jira"`
-	Defaults Defaults                 `yaml:"defaults"`
-	Storage  StorageConfig            `yaml:"storage"`
-	Expiration Expiration             `yaml:"expiration"`
-	Opencode OpencodeConfig           `yaml:"opencode"`
+	Jira      JiraConfig               `yaml:"jira"`
+	Defaults  Defaults                 `yaml:"defaults"`
+	Storage   StorageConfig            `yaml:"storage"`
+	Expiration Expiration              `yaml:"expiration"`
+	Opencode  OpencodeConfig           `yaml:"opencode"`
+	// Workflow drives the automated `drive` pipeline. The top-level values act
+	// as defaults; per-project overrides live under projects.<KEY>.workflow and
+	// are merged on top by ResolveProject.
+	Workflow WorkflowConfig            `yaml:"workflow"`
 	// Git is the repository and branching configuration: dir locates the
 	// project repository for all git/gh commands, branch_template and
 	// branch_templates name feature branches. The top-level values act as
@@ -40,11 +44,12 @@ type Defaults struct {
 }
 
 // ProjectConfig holds per-project overrides, applied on top of the global
-// config when that project is selected. Git fields that are left empty fall
-// back to the top-level git config.
+// config when that project is selected. Git and workflow fields that are left
+// empty fall back to the top-level git/workflow config.
 type ProjectConfig struct {
-	BoardID string    `yaml:"board_id"`
-	Git     GitConfig `yaml:"git"`
+	BoardID  string         `yaml:"board_id"`
+	Git      GitConfig      `yaml:"git"`
+	Workflow WorkflowConfig `yaml:"workflow"`
 }
 
 type StorageConfig struct {
@@ -66,7 +71,8 @@ type Expiration struct {
 
 // GitConfig controls how xynapse drives git/gh for a project's prepare,
 // finalize, and get-sprint status. Configured at the top level (defaults) and
-// overridable per-project under projects.<KEY>.git.
+// overridable per-project under projects.<KEY>.git. Empty project git fields
+// inherit here.
 type GitConfig struct {
 	// Dir is the repository directory the git/gh checks run in and where
 	// plan/implement/prepare/finalize operate. When empty, commands fall back
@@ -79,6 +85,34 @@ type GitConfig struct {
 	// BranchTemplates overrides BranchTemplate per issue type (keys are
 	// matched case-insensitively, e.g. Story/Bug/Epic).
 	BranchTemplates map[string]string `yaml:"branch_templates"`
+}
+
+// WorkflowConfig controls the automated `drive` pipeline for a project.
+// Configured at the top level (defaults) and overridable per-project under
+// projects.<KEY>.workflow. Empty project workflow fields inherit here.
+type WorkflowConfig struct {
+	// TestCommand runs in the repo directory after implement; a failing run
+	// blocks finalize unless drive runs with --force. Empty disables the test
+	// gate.
+	TestCommand string `yaml:"test_command"`
+	// LintCommand is an optional command run after tests; a failing run blocks
+	// finalize unless drive runs with --force. Empty skips the lint step.
+	LintCommand string `yaml:"lint_command"`
+	// TestStatus is the Jira status the ticket is moved to once its PR is
+	// merged. drive refuses to run the ticket step when unset.
+	TestStatus string `yaml:"test_status"`
+	// BaseBranch is the branch drive branches FROM in prepare.
+	BaseBranch string `yaml:"base_branch"`
+	// TargetBranch is the merge target for every PR drive creates; when empty
+	// it falls back to BaseBranch.
+	TargetBranch string `yaml:"target_branch"`
+	// CommentTemplate is the default Jira comment posted on the merged ticket.
+	// Supported placeholders: {key}, {summary}, {url}, {branch}, {tests}.
+	CommentTemplate string `yaml:"comment_template"`
+	// Autopilot makes drive behave as if --yes was passed: confirmations are
+	// answered with their suggested defaults and interactive prompts are
+	// skipped. nil means unset.
+	Autopilot *bool `yaml:"autopilot"`
 }
 
 // Duration returns the expiry window as a time.Duration (0 when disabled).
@@ -199,9 +233,33 @@ func (c *Config) ResolveProject(flagProject string) (*Config, error) {
 		if len(p.Git.BranchTemplates) > 0 {
 			resolved.Git.BranchTemplates = p.Git.BranchTemplates
 		}
+		if p.Workflow.TestCommand != "" {
+			resolved.Workflow.TestCommand = p.Workflow.TestCommand
+		}
+		if p.Workflow.LintCommand != "" {
+			resolved.Workflow.LintCommand = p.Workflow.LintCommand
+		}
+		if p.Workflow.TestStatus != "" {
+			resolved.Workflow.TestStatus = p.Workflow.TestStatus
+		}
+		if p.Workflow.BaseBranch != "" {
+			resolved.Workflow.BaseBranch = p.Workflow.BaseBranch
+		}
+		if p.Workflow.TargetBranch != "" {
+			resolved.Workflow.TargetBranch = p.Workflow.TargetBranch
+		}
+		if p.Workflow.CommentTemplate != "" {
+			resolved.Workflow.CommentTemplate = p.Workflow.CommentTemplate
+		}
+		if p.Workflow.Autopilot != nil {
+			resolved.Workflow.Autopilot = p.Workflow.Autopilot
+		}
 	}
 	if resolved.Git.BranchTemplate == "" {
 		resolved.Git.BranchTemplate = "feature-v5/{Key}"
+	}
+	if resolved.Workflow.TargetBranch == "" {
+		resolved.Workflow.TargetBranch = resolved.Workflow.BaseBranch
 	}
 	resolved.Git.Dir = ExpandDir(resolved.Git.Dir)
 	return &resolved, nil

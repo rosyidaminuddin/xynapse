@@ -7,7 +7,7 @@ A CLI to manage Jira tickets locally. Tickets are fetched from the Jira REST API
 - Go 1.26+
 - A Jira Cloud account with API token access
 - [opencode](https://opencode.ai) CLI for the `plan` and `implement` commands
-- [gh](https://cli.github.com) CLI (installed and authenticated) for `finalize --pr`. Optional for `get-sprint`: without it the PR column shows `?` and the command still works.
+- [gh](https://cli.github.com) CLI (installed and authenticated) for `finalize --pr` and the `drive` command. Optional for `get-sprint`: without it the PR column shows `?` and the command still works.
 
 ## Install
 
@@ -55,6 +55,16 @@ git:
   branch_templates:                     # optional per-type overrides (matched case-insensitively)
     Bug: "fix-v5/{Key}"
     Epic: "epic/{Key}"
+
+# drive workflow: optional, only needed by `xynapse drive`
+workflow:
+  test_command: "go test ./..."      # command the test step runs in the repo
+  lint_command: "go vet ./..."       # optional lint step
+  test_status: "In Review"           # Jira status the ticket moves to after its PR merges
+  base_branch: "main"                # branch feature branches are created from
+  target_branch: "develop"           # PR merge target (defaults to base_branch)
+  comment_template: "PR: {url}"      # comment posted on the ticket after merge; {key}/{summary}/{url}/{branch}
+  autopilot: false                   # behave as if --yes was always passed
 
 projects:
   MERADIO:
@@ -208,6 +218,9 @@ defaulting to cwd); outside a repo they show `?`.
 
 # Commit, push, and open a pull request against main
 ./bin/xynapse finalize MERADIO-123 -b main --pr
+
+# Drive a ticket through the whole workflow (see "Driving a ticket" below)
+./bin/xynapse drive MERADIO-123 --yes
 ```
 
 ### Ticket references
@@ -237,6 +250,12 @@ defaulting to cwd); outside a repo they show `?`.
 - `--pr` — create a pull request with `gh` after `finalize` pushes (requires `--base`)
 - `--set <status>` — update a plan's status with `status` (not started, in progress, in review, done)
 - `--id <id>` — force a specific transition for `transition` (disambiguates multiple transitions that lead to the same status)
+- `-y`, `--yes` — autopilot for `drive`: confirmations use suggested defaults, prompts are skipped
+- `--base <branch>` — PR target branch for `drive` (defaults to `workflow.target_branch`, then `base_branch`)
+- `--status <status>` — Jira status for `drive`'s ticket step (defaults to `workflow.test_status`)
+- `--dry-run` — print the steps `drive` would run without executing them
+- `--step <name>` — run a single `drive` step (branch, plan, implement, test, lint, finalize, ticket)
+- `--from <name>` / `--to <name>` — run an inclusive range of `drive` steps
 
 ### Implementation plans
 
@@ -279,6 +298,46 @@ plan requires 2 confirmation(s) before implementing. Answer each question; press
 While opencode works, its activity is streamed live to stderr — each tool call (bash command, file edit, read, etc.) is printed as `  [tool] title` the moment it runs — so you can watch what the agent is doing in the terminal. Assistant text is shown once, when the command finishes.
 
 Review the plan before executing. Skills require the opencode CLI to be installed and authenticated. Markdown output (`plan` plans, `implement` reports) is styled in the terminal with [glamour](https://github.com/charmbracelet/glamour) (the rendering engine behind [glow](https://github.com/charmbracelet/glow)); when piped or redirected, the raw markdown is passed through unchanged.
+
+### Driving a ticket
+
+`xynapse drive <ref>` runs a single ticket through the whole pipeline, recording each completed step per ticket so interrupted runs resume where they stopped:
+
+```
+branch -> plan -> implement -> test -> lint -> finalize -> ticket
+```
+
+- **branch** — creates/checks out the feature branch (from `workflow.base_branch`, or `--base`).
+- **plan** — generates the plan if none exists or it is stale. A stale plan prompts for confirmation; `--force` or `--yes` regenerates without asking.
+- **implement** — runs the saved plan via opencode in the repo. Its confirmation prompts are answered interactively, or with suggested defaults under `--yes`.
+- **test / lint** — runs `workflow.test_command` / `workflow.lint_command` in the repo. A failure records the step and blocks **finalize** until fixed; `--force` bypasses the gate. Empty `test_command` skips the step.
+- **finalize** — commits, pushes, and opens a PR against `workflow.target_branch` (falls back to `base_branch`). An explicit `--base` overrides both.
+- **ticket** — waits until the PR is **merged**, then assigns the ticket, transitions it to `workflow.test_status` (or `--status`), and posts the `workflow.comment_template` comment (default `PR: {url}\n\nCloses {key}`). Until the PR merges, drive stops here and tells you to re-run once it is merged.
+
+```sh
+# Autopilot: confirmations use suggested defaults, no prompts
+./bin/xynapse drive MERADIO-123 --yes
+
+# Interactive: answer each confirmation/assignment/comment prompt as it comes
+./bin/xynapse drive MERADIO-123
+
+# Drive from a specific repo or model, or PR against a specific base
+./bin/xynapse drive MERADIO-123 --dir ~/work/myproject --base main --model anthropic/claude-sonnet-4
+
+# Run a single step or a range of steps
+./bin/xynapse drive MERADIO-123 --step implement
+./bin/xynapse drive MERADIO-123 --from test --to finalize
+
+# Preview the steps without executing anything
+./bin/xynapse drive MERADIO-123 --dry-run
+```
+
+Notes:
+
+- Steps are recorded under `<storage>/drive/<PROJECT>/<KEY>.yml`. `clear-cache` removes them with the rest of the cache.
+- The **ticket** step only runs after the PR merges; a re-run checks the current PR state via `gh` before touching Jira. Until then the drive state stays open for that step.
+- `--yes` is the equivalent of setting `workflow.autopilot: true` in config. The **assignee** prompt and **comment** prompt are skipped in autopilot mode (current assignee is kept, template comment is posted).
+- Drive refuses to run outside a git working tree. Configure `git.dir` (or pass `--dir`) so it targets the right repo.
 
 ### Development workflow
 

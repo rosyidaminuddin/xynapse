@@ -105,3 +105,46 @@ func TestPRStatesMissingBinary(t *testing.T) {
 		t.Error("expected error for missing gh binary")
 	}
 }
+
+func TestPRViewMerged(t *testing.T) {
+	stubGHOutput(t, `{"number":7,"state":"MERGED","reviewDecision":"APPROVED","mergeable":"MERGEABLE","url":"https://github.com/example/xynapse/pull/7"}`)
+
+	pr, err := PRView("gh", "", "feature-v5/PROJ-1")
+	if err != nil {
+		t.Fatalf("PRView: %v", err)
+	}
+	if pr.State != "merged" {
+		t.Errorf("State = %q, want merged", pr.State)
+	}
+	if pr.ReviewDecision != "APPROVED" {
+		t.Errorf("ReviewDecision = %q, want APPROVED", pr.ReviewDecision)
+	}
+	if pr.Number != 7 {
+		t.Errorf("Number = %d, want 7", pr.Number)
+	}
+	if pr.URL != "https://github.com/example/xynapse/pull/7" {
+		t.Errorf("URL = %q", pr.URL)
+	}
+}
+
+func TestPRViewOpenChangesRequested(t *testing.T) {
+	stubGHOutput(t, `{"number":8,"state":"OPEN","reviewDecision":"CHANGES_REQUESTED","mergeable":"MERGEABLE","url":"https://github.com/example/xynapse/pull/8"}`)
+
+	pr, err := PRView("gh", "", "feature-v5/PROJ-2")
+	if err != nil {
+		t.Fatalf("PRView: %v", err)
+	}
+	if pr.State != "open" {
+		t.Errorf("State = %q, want open", pr.State)
+	}
+	if pr.ReviewDecision != "CHANGES_REQUESTED" {
+		t.Errorf("ReviewDecision = %q, want CHANGES_REQUESTED", pr.ReviewDecision)
+	}
+}
+
+func TestPRViewMissingBinary(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if _, err := PRView("gh-nonexistent", "", "feature-v5/PROJ-1"); err == nil {
+		t.Error("expected error for missing gh binary")
+	}
+}

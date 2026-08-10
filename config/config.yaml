@@ -55,3 +55,16 @@ git:
   branch_templates:                    # Optional per-issue-type overrides (case-insensitive)
     Bug: "fix-v5/{Key}"
     Epic: "epic/{Key}"
+
+# Workflow Settings (used by the drive command)
+# drive runs a ticket through prepare -> plan -> implement -> test -> lint ->
+# finalize -> ticket. Values here are the defaults; a project can override them
+# via projects.<KEY>.workflow.
+workflow:
+  test_command: ""       # Command run by the test step, e.g. "go test ./..."
+  lint_command: ""       # Command run by the lint step, e.g. "go vet ./..." (optional)
+  test_status: ""        # Jira status the ticket is moved to after its PR merges, e.g. "In Review"
+  base_branch: "main"    # Branch feature branches are created from
+  target_branch: ""      # PR merge target (defaults to base_branch when empty)
+  comment_template: ""   # Jira comment posted after merge; placeholders {key}, {summary}, {url}, {branch}
+  autopilot: false       # Behave as if --yes was always passed to drive

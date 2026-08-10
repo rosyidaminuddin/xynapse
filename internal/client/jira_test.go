@@ -261,6 +261,75 @@ func TestUnassign(t *testing.T) {
 	}
 }
 
+func TestCommentADF(t *testing.T) {
+	doc := commentADF("line one\n\nline two")
+	content, ok := doc["content"].([]any)
+	if !ok {
+		t.Fatalf("content = %T, want []any", doc["content"])
+	}
+	if len(content) != 2 {
+		t.Fatalf("got %d paragraphs, want 2 (empty line skipped)", len(content))
+	}
+	p := content[0].(map[string]any)
+	if p["type"] != "paragraph" {
+		t.Errorf("paragraph type = %v", p["type"])
+	}
+	texts := p["content"].([]any)[0].(map[string]any)
+	if texts["text"] != "line one" {
+		t.Errorf("paragraph text = %v", texts["text"])
+	}
+	if doc["type"] != "doc" || doc["version"] != 1 {
+		t.Errorf("doc = %v", doc)
+	}
+}
+
+func TestAddComment(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.Path, "/rest/api/3/issue/PROJ-1/comment") {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		data, _ := io.ReadAll(r.Body)
+		gotBody = string(data)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	if err := c.AddComment("PROJ", "1", "PR merged"); err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(gotBody), &body); err != nil {
+		t.Fatalf("invalid request body %q: %v", gotBody, err)
+	}
+	doc, ok := body["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("body = %T, want map", body["body"])
+	}
+	if doc["type"] != "doc" {
+		t.Errorf("doc type = %v", doc["type"])
+	}
+}
+
+func TestAddCommentError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, `{"errorMessages":["You do not have permission"]}`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	err := c.AddComment("PROJ", "1", "hi")
+	if err == nil || !strings.Contains(err.Error(), "403") {
+		t.Fatalf("err = %v, want 403", err)
+	}
+}
+
 func TestSetAssigneeError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

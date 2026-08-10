@@ -85,6 +85,7 @@ so get commands can read them without hitting the server.`,
 		newShowPlanCmd(cfg),
 		newPrepareCmd(cfg),
 		newFinalizeCmd(cfg),
+		newDriveCmd(cfg),
 		newStatusCmd(cfg),
 		newTransitionCmd(cfg),
 		newAssigneeCmd(cfg),
@@ -294,6 +295,66 @@ func newStatusCmd(cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().String("set", "", "set the plan status (not started, in progress, in review, done)")
+	return cmd
+}
+
+func newDriveCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "drive <ticket-number|key|url>",
+		Short: "drive a ticket through the whole workflow and update it on Jira",
+		Long: "Drive a single ticket through the full pipeline: prepare a feature\n" +
+			"branch, generate/refresh the plan, implement it, run the configured\n" +
+			"tests and linter, finalize (commit, push, open a PR against\n" +
+			"workflow.target_branch), and — once the PR is merged — update the\n" +
+			"Jira ticket (assignee, transition to workflow.test_status, comment).\n\n" +
+			"The workflow stops after the PR is created until it is merged; a\n" +
+			"re-run resumes and checks the PR state before updating the ticket.\n" +
+			"Steps are recorded per ticket, so interrupted runs resume where they\n" +
+			"stopped. Without --yes every decision is prompted interactively.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, _ := cmd.Flags().GetString("dir")
+			if dir == "" {
+				dir = cfg.Git.Dir
+			}
+			dir = config.ExpandDir(dir)
+			model, _ := cmd.Flags().GetString("model")
+			if model == "" {
+				model = cfg.Opencode.Model
+			}
+			base, _ := cmd.Flags().GetString("base")
+			status, _ := cmd.Flags().GetString("status")
+			auto, _ := cmd.Flags().GetBool("yes")
+			force, _ := cmd.Flags().GetBool("force")
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
+			step, _ := cmd.Flags().GetString("step")
+			from, _ := cmd.Flags().GetString("from")
+			to, _ := cmd.Flags().GetString("to")
+			return command.Drive(cfg, command.DriveOptions{
+				TicketRef: args[0],
+				Dir:       dir,
+				Model:     model,
+				Base:      base,
+				Status:    status,
+				Auto:      auto,
+				Force:     force,
+				DryRun:    dryRun,
+				Step:      step,
+				From:      from,
+				To:        to,
+			})
+		},
+	}
+	cmd.Flags().String("dir", "", "target repo directory (default: config git.dir, then current working directory)")
+	cmd.Flags().String("model", "", "override the opencode model")
+	cmd.Flags().StringP("base", "b", "", "PR target branch (default: config workflow.target_branch, then base_branch)")
+	cmd.Flags().String("status", "", "Jira status to move the ticket to after the PR merges (default: config workflow.test_status)")
+	cmd.Flags().BoolP("yes", "y", false, "autopilot: answer confirmations with suggested defaults and skip prompts")
+	cmd.Flags().BoolP("force", "f", false, "bypass failed tests/lint and the stale-plan prompt")
+	cmd.Flags().Bool("dry-run", false, "print the steps drive would run without executing them")
+	cmd.Flags().String("step", "", "run a single step (branch, plan, implement, test, lint, finalize, ticket)")
+	cmd.Flags().String("from", "", "first step in the range to run")
+	cmd.Flags().String("to", "", "last step in the range to run")
 	return cmd
 }
 

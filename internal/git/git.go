@@ -130,6 +130,25 @@ func (g *Git) Push(branch string) error {
 	return err
 }
 
+// Test runs an arbitrary command (e.g. "go test ./...") via sh -c in the
+// repository directory and returns its combined output. A non-zero exit is
+// reported as an error; the output is returned either way so callers can
+// surface it. An empty command is an error.
+func (g *Git) Test(command string) (string, error) {
+	if strings.TrimSpace(command) == "" {
+		return "", fmt.Errorf("empty command")
+	}
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Dir = g.dir
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return strings.TrimSpace(buf.String()), fmt.Errorf("command %q failed: %w: %s", command, err, truncate(buf.String(), 2000))
+	}
+	return strings.TrimSpace(buf.String()), nil
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s

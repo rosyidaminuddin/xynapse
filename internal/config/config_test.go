@@ -35,6 +35,14 @@ git:
   branch_templates:
     Bug: "fix-v5/{Key}"
 
+workflow:
+  test_command: "go test ./..."
+  lint_command: "go vet ./..."
+  test_status: "In Review"
+  base_branch: "main"
+  comment_template: "PR: {url}"
+  autopilot: true
+
 projects:
   MERADIO:
     board_id: "561"
@@ -110,6 +118,115 @@ func TestLoadValid(t *testing.T) {
 	}
 	if cfg.Projects["MERADIO"].Git.BranchTemplates["Epic"] != "epic-v5/{Key}" {
 		t.Errorf("Projects[MERADIO] git = %v", cfg.Projects["MERADIO"].Git)
+	}
+
+	// Workflow block parses.
+	if cfg.Workflow.TestCommand != "go test ./..." {
+		t.Errorf("Workflow.TestCommand = %q", cfg.Workflow.TestCommand)
+	}
+	if cfg.Workflow.LintCommand != "go vet ./..." {
+		t.Errorf("Workflow.LintCommand = %q", cfg.Workflow.LintCommand)
+	}
+	if cfg.Workflow.TestStatus != "In Review" {
+		t.Errorf("Workflow.TestStatus = %q", cfg.Workflow.TestStatus)
+	}
+	if cfg.Workflow.BaseBranch != "main" {
+		t.Errorf("Workflow.BaseBranch = %q", cfg.Workflow.BaseBranch)
+	}
+	if cfg.Workflow.CommentTemplate != "PR: {url}" {
+		t.Errorf("Workflow.CommentTemplate = %q", cfg.Workflow.CommentTemplate)
+	}
+	if cfg.Workflow.Autopilot == nil || !*cfg.Workflow.Autopilot {
+		t.Errorf("Workflow.Autopilot = %v, want true", cfg.Workflow.Autopilot)
+	}
+}
+
+func TestResolveProjectWorkflowMerge(t *testing.T) {
+	doc := `workflow:
+  test_command: "go test ./..."
+  test_status: "QA"
+  base_branch: "main"
+  target_branch: "develop"
+  comment_template: "top template"
+  autopilot: false
+
+projects:
+  ALPHA:
+    board_id: "99"
+    workflow:
+      test_command: "make test"
+      comment_template: "alpha"
+`
+	path := writeConfig(t, doc)
+	cfg, err := Load(path, filepath.Join(filepath.Dir(path), ".env"))
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// ALPHA overrides test_command and comment_template; the rest inherit.
+	resolved, err := cfg.ResolveProject("ALPHA")
+	if err != nil {
+		t.Fatalf("ResolveProject: %v", err)
+	}
+	if resolved.Workflow.TestCommand != "make test" {
+		t.Errorf("TestCommand = %q, want make test", resolved.Workflow.TestCommand)
+	}
+	if resolved.Workflow.TestStatus != "QA" {
+		t.Errorf("TestStatus = %q, want QA", resolved.Workflow.TestStatus)
+	}
+	if resolved.Workflow.BaseBranch != "main" {
+		t.Errorf("BaseBranch = %q, want main", resolved.Workflow.BaseBranch)
+	}
+	if resolved.Workflow.TargetBranch != "develop" {
+		t.Errorf("TargetBranch = %q, want develop", resolved.Workflow.TargetBranch)
+	}
+	if resolved.Workflow.CommentTemplate != "alpha" {
+		t.Errorf("CommentTemplate = %q, want alpha", resolved.Workflow.CommentTemplate)
+	}
+	if resolved.Workflow.Autopilot == nil || *resolved.Workflow.Autopilot {
+		t.Errorf("Autopilot = %v, want false", resolved.Workflow.Autopilot)
+	}
+}
+
+func TestResolveProjectTargetBranchFallback(t *testing.T) {
+	doc := `defaults:
+  project: "PROJ"
+workflow:
+  base_branch: "main"
+`
+	path := writeConfig(t, doc)
+	cfg, err := Load(path, filepath.Join(filepath.Dir(path), ".env"))
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	resolved, err := cfg.ResolveProject("")
+	if err != nil {
+		t.Fatalf("ResolveProject: %v", err)
+	}
+	if resolved.Workflow.TargetBranch != "main" {
+		t.Errorf("TargetBranch = %q, want fallback to base_branch main", resolved.Workflow.TargetBranch)
+	}
+}
+
+func TestResolveProjectAutopilotNilInherited(t *testing.T) {
+	// A project that doesn't set autopilot keeps the top-level value.
+	doc := `workflow:
+  autopilot: true
+projects:
+  ALPHA:
+    board_id: "99"
+`
+	path := writeConfig(t, doc)
+	cfg, err := Load(path, filepath.Join(filepath.Dir(path), ".env"))
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	resolved, err := cfg.ResolveProject("ALPHA")
+	if err != nil {
+		t.Fatalf("ResolveProject: %v", err)
+	}
+	if resolved.Workflow.Autopilot == nil || !*resolved.Workflow.Autopilot {
+		t.Errorf("Autopilot = %v, want inherited true", resolved.Workflow.Autopilot)
 	}
 }
 
