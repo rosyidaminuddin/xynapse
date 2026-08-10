@@ -157,3 +157,120 @@ func TestTransitionTicketError(t *testing.T) {
 		t.Fatalf("err = %v, want 400", err)
 	}
 }
+
+func TestSearchUsers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %s, want GET", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.Path, "/rest/api/3/user/search") {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("query") != "jane" {
+			t.Errorf("query param = %q, want jane", r.URL.Query().Get("query"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, `[
+			{"accountId":"5b10a2844c20165700ede21g","displayName":"Jane Doe","emailAddress":"jane@corp.com","active":true},
+			{"accountId":"5b10a2844c20165700ede22h","displayName":"Jane Roe","emailAddress":"jane@acme.com","active":true}
+		]`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	got, err := c.SearchUsers("jane")
+	if err != nil {
+		t.Fatalf("SearchUsers: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d users, want 2", len(got))
+	}
+	if got[0].AccountID != "5b10a2844c20165700ede21g" || got[0].DisplayName != "Jane Doe" || got[0].Email != "jane@corp.com" {
+		t.Errorf("user 0 = %+v", got[0])
+	}
+}
+
+func TestSearchUsersError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, `{"errorMessages":["You do not have permission to browse users"]}`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	_, err := c.SearchUsers("jane")
+	if err == nil || !strings.Contains(err.Error(), "403") {
+		t.Fatalf("err = %v, want 403", err)
+	}
+}
+
+func TestSetAssignee(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.Path, "/rest/api/3/issue/PROJ-1") {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		data, _ := io.ReadAll(r.Body)
+		gotBody = string(data)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	if err := c.SetAssignee("PROJ", "1", "5b10a2844c20165700ede21g", false); err != nil {
+		t.Fatalf("SetAssignee: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(gotBody), &body); err != nil {
+		t.Fatalf("invalid request body %q: %v", gotBody, err)
+	}
+	fields := body["fields"].(map[string]any)
+	assignee := fields["assignee"].(map[string]any)
+	if assignee["accountId"] != "5b10a2844c20165700ede21g" {
+		t.Errorf("assignee.accountId = %v", assignee["accountId"])
+	}
+}
+
+func TestUnassign(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		gotBody = string(data)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	if err := c.SetAssignee("PROJ", "1", "", true); err != nil {
+		t.Fatalf("SetAssignee: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(gotBody), &body); err != nil {
+		t.Fatalf("invalid request body %q: %v", gotBody, err)
+	}
+	fields := body["fields"].(map[string]any)
+	assignee, ok := fields["assignee"]
+	if !ok || assignee != nil {
+		t.Errorf("assignee = %v, want null", assignee)
+	}
+}
+
+func TestSetAssigneeError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, `{"errorMessages":["The user does not exist"]}`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	err := c.SetAssignee("PROJ", "1", "bad-id", false)
+	if err == nil || !strings.Contains(err.Error(), "400") {
+		t.Fatalf("err = %v, want 400", err)
+	}
+}

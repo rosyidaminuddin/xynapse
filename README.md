@@ -179,6 +179,16 @@ go test ./...
 # Force a specific transition when several lead to the same status
 ./bin/xynapse transition MERADIO-123 --id 41
 
+# Show the current assignee (fetched live from Jira)
+./bin/xynapse assignee MERADIO-123
+
+# Assign a ticket by display name or email
+./bin/xynapse assignee MERADIO-123 "Jane Doe"
+./bin/xynapse assignee MERADIO-123 jane@corp.com
+
+# Clear the assignee
+./bin/xynapse assignee MERADIO-123 unassigned
+
 # Create a feature branch (feature-v5/MERADIO-123) from main
 ./bin/xynapse prepare MERADIO-123 -b main
 
@@ -290,6 +300,16 @@ Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint tick
 - With a status argument, the ticket is moved to the matching status. The status is matched case-insensitively against both the transition's target status and its name. If several transitions lead to the same status, an error lists their IDs — pass `--id <id>` to pick one.
 - Without an argument, the available transitions (id, transition name, target status) are printed.
 - After a successful transition the locally cached ticket is re-fetched, so `get-ticket`, `get-sprint`, and plan-staleness reflect the new status.
+
+### Jira assignee
+
+`xynapse assignee <ref> [user]` shows or updates a ticket's assignee:
+
+- Without a user argument the current assignee is fetched live from Jira.
+- A user is resolved via the Jira user search by display name or email address; a case-insensitive exact match on either wins, and multiple fuzzy matches produce an error listing the candidates to refine by.
+- A bare account ID (the long alphanumeric Jira user ID) is used directly without a search.
+- `unassigned`, `none`, or `-` clears the assignee.
+- After a successful update the locally cached ticket is re-fetched.
 
 ## Help
 

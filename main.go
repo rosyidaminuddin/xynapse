@@ -87,6 +87,7 @@ so get commands can read them without hitting the server.`,
 		newFinalizeCmd(cfg),
 		newStatusCmd(cfg),
 		newTransitionCmd(cfg),
+		newAssigneeCmd(cfg),
 		newConfigCmd(),
 	)
 
@@ -301,6 +302,21 @@ func newTransitionCmd(cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().String("id", "", "transition id to force (disambiguates multiple transitions to the same status)")
 	return cmd
+}
+
+func newAssigneeCmd(cfg *config.Config) *cobra.Command {
+	return &cobra.Command{
+		Use:   "assignee <ticket-number|key|url> [user]",
+		Short: "show or update a ticket's assignee",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			user := ""
+			if len(args) > 1 {
+				user = args[1]
+			}
+			return command.Assignee(cfg, args[0], user)
+		},
+	}
 }
 
 func newConfigCmd() *cobra.Command {

@@ -189,6 +189,103 @@ func (c *JiraClient) TransitionTicket(project, ticketNum, transitionID string) e
 	return nil
 }
 
+// JiraUser is a Jira account returned by the user search endpoint.
+type JiraUser struct {
+	AccountID   string
+	DisplayName string
+	Email       string
+}
+
+// SearchUsers looks up Jira users by display name or email address via the
+// user search endpoint.
+func (c *JiraClient) SearchUsers(query string) ([]JiraUser, error) {
+	params := url.Values{}
+	params.Set("query", query)
+	params.Set("maxResults", "20")
+	endpoint := fmt.Sprintf("%s/rest/api/3/user/search?%s", c.baseURL, params.Encode())
+
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	c.applyHeaders(req)
+
+	slog.Debug("searching jira users", "query", query)
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, fmt.Errorf("network error searching users: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var raw []struct {
+		AccountID   string `json:"accountId"`
+		DisplayName string `json:"displayName"`
+		Email       string `json:"emailAddress"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("failed to parse user search JSON: %w", err)
+	}
+
+	users := make([]JiraUser, 0, len(raw))
+	for _, u := range raw {
+		users = append(users, JiraUser{
+			AccountID:   u.AccountID,
+			DisplayName: u.DisplayName,
+			Email:       u.Email,
+		})
+	}
+	return users, nil
+}
+
+// SetAssignee assigns a ticket to the given account, or unassigns it when
+// unassign is true. Jira returns 204 No Content on success.
+func (c *JiraClient) SetAssignee(project, ticketNum, accountID string, unassign bool) error {
+	issueKey := fmt.Sprintf("%s-%s", project, ticketNum)
+	endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
+
+	fields := struct {
+		Assignee any `json:"assignee"`
+	}{}
+	if unassign {
+		fields.Assignee = nil
+	} else {
+		fields.Assignee = struct {
+			AccountID string `json:"accountId"`
+		}{AccountID: accountID}
+	}
+
+	payload, err := json.Marshal(struct {
+		Fields any `json:"fields"`
+	}{Fields: fields})
+	if err != nil {
+		return fmt.Errorf("failed to encode assignee request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPut, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	c.applyHeaders(req)
+
+	slog.Debug("updating assignee", "issue", issueKey, "unassign", unassign)
+	resp, err := c.do(req)
+	if err != nil {
+		return fmt.Errorf("network error updating assignee for %s: %w", issueKey, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // FetchActiveSprint returns the current active sprint for a board via the Agile API.
 func (c *JiraClient) FetchActiveSprint(boardID string) (*models.Sprint, error) {
 	endpoint := fmt.Sprintf("%s/rest/agile/1.0/board/%s/sprint?state=active", c.baseURL, boardID)
