@@ -79,6 +79,25 @@ Credentials are resolved from (highest priority first):
 
 Set `XYNAPSE_CONFIG_DIR` to override the config directory and `XYNAPSE_STORAGE` to override the storage directory.
 
+### Inspecting and editing config
+
+The `config` subcommand reads and writes the config file without needing valid Jira credentials:
+
+```sh
+./bin/xynapse config                  # print the full effective config (api_token redacted)
+./bin/xynapse config path             # print the config file path
+./bin/xynapse config get jira.url     # print the effective value of a key
+./bin/xynapse config set defaults.project ALPHA
+./bin/xynapse config set expiration.hours 48
+./bin/xynapse config set opencode.auto_approve true
+./bin/xynapse config set projects.MERADIO.board_id 561
+```
+
+- Keys are dot-separated paths into the config, including map entries (`git.branch_templates.Bug`, `projects.MERADIO.git.branch_template`).
+- `config get` returns the **effective** value — environment overlays (`JIRA_*`) and defaults are applied, so an unset `git.branch_template` still prints `feature-v5/{Key}`.
+- `config set` creates the file and any nested keys automatically, keeps existing YAML comments, and stores values as typed scalars (`true` → boolean, `48` → number, otherwise string). Setting a key to its current value is a no-op.
+- Bare `config` prints the full effective config with `jira.api_token` redacted as `REDACTED`. `config get jira.api_token` still prints the real token.
+
 ### Multiple projects
 
 Define a `projects:` map to give each project its own board and branching strategy:

@@ -86,6 +86,7 @@ so get commands can read them without hitting the server.`,
 		newPrepareCmd(cfg),
 		newFinalizeCmd(cfg),
 		newStatusCmd(cfg),
+		newConfigCmd(),
 	)
 
 	return root
@@ -281,4 +282,78 @@ func newStatusCmd(cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().String("set", "", "set the plan status (not started, in progress, in review, done)")
 	return cmd
+}
+
+func newConfigCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "get, set, and inspect the xynapse configuration",
+		Args:  cobra.NoArgs,
+		// Override the root PersistentPreRunE (which loads and validates the
+		// config) — the config command manages the config file itself, so it
+		// must work even before Jira credentials exist.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, envPath := configPaths()
+			out, err := config.Dump(configPath, envPath)
+			if err != nil {
+				return err
+			}
+			fmt.Print(out)
+			return nil
+		},
+	}
+	cmd.AddCommand(newConfigGetCmd(), newConfigSetCmd(), newConfigPathCmd())
+	return cmd
+}
+
+func newConfigGetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "get <key>",
+		Short: "print the effective value of a config key",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, envPath := configPaths()
+			val, err := config.Get(configPath, envPath, args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Println(val)
+			return nil
+		},
+	}
+}
+
+func newConfigSetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "set <key> <value>",
+		Short: "write a config value to the config file",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, _ := configPaths()
+			changed, err := config.Set(configPath, args[0], args[1])
+			if err != nil {
+				return err
+			}
+			if changed {
+				fmt.Printf("set %s to %s\n", args[0], args[1])
+			} else {
+				fmt.Printf("%s is already %s\n", args[0], args[1])
+			}
+			return nil
+		},
+	}
+}
+
+func newConfigPathCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "path",
+		Short: "print the config file path",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, _ := configPaths()
+			fmt.Println(configPath)
+			return nil
+		},
+	}
 }
