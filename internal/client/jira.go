@@ -97,6 +97,98 @@ func (c *JiraClient) FetchTicket(project string, ticketNum string) (*models.Tick
 	return ticket, nil
 }
 
+// Transition describes a Jira workflow transition available for an issue.
+type Transition struct {
+	ID   string
+	Name string
+	To   string // the status the issue lands in after the transition
+}
+
+// FetchTransitions returns the workflow transitions available for an issue,
+// each with its target status.
+func (c *JiraClient) FetchTransitions(project, ticketNum string) ([]Transition, error) {
+	issueKey := fmt.Sprintf("%s-%s", project, ticketNum)
+	endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.baseURL, issueKey)
+
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	c.applyHeaders(req)
+
+	slog.Debug("fetching transitions", "issue", issueKey)
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, fmt.Errorf("network error fetching transitions for %s: %w", issueKey, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Transitions []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+			To   struct {
+				Name string `json:"name"`
+			} `json:"to"`
+		} `json:"transitions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse transitions JSON: %w", err)
+	}
+
+	transitions := make([]Transition, 0, len(result.Transitions))
+	for _, t := range result.Transitions {
+		transitions = append(transitions, Transition{
+			ID:   t.ID,
+			Name: t.Name,
+			To:   t.To.Name,
+		})
+	}
+	return transitions, nil
+}
+
+// TransitionTicket moves an issue to a new status via the given transition ID.
+func (c *JiraClient) TransitionTicket(project, ticketNum, transitionID string) error {
+	issueKey := fmt.Sprintf("%s-%s", project, ticketNum)
+	endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.baseURL, issueKey)
+
+	body := struct {
+		Transition struct {
+			ID string `json:"id"`
+		} `json:"transition"`
+	}{}
+	body.Transition.ID = transitionID
+
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to encode transition request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	c.applyHeaders(req)
+
+	slog.Debug("transitioning issue", "issue", issueKey, "transition_id", transitionID)
+	resp, err := c.do(req)
+	if err != nil {
+		return fmt.Errorf("network error transitioning %s: %w", issueKey, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // FetchActiveSprint returns the current active sprint for a board via the Agile API.
 func (c *JiraClient) FetchActiveSprint(boardID string) (*models.Sprint, error) {
 	endpoint := fmt.Sprintf("%s/rest/agile/1.0/board/%s/sprint?state=active", c.baseURL, boardID)

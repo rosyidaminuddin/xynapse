@@ -86,6 +86,7 @@ so get commands can read them without hitting the server.`,
 		newPrepareCmd(cfg),
 		newFinalizeCmd(cfg),
 		newStatusCmd(cfg),
+		newTransitionCmd(cfg),
 		newConfigCmd(),
 	)
 
@@ -281,6 +282,24 @@ func newStatusCmd(cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().String("set", "", "set the plan status (not started, in progress, in review, done)")
+	return cmd
+}
+
+func newTransitionCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "transition <ticket-number|key|url> [status]",
+		Short: "move a Jira ticket to a new status (or list available transitions)",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			transitionID, _ := cmd.Flags().GetString("id")
+			statusName := ""
+			if len(args) > 1 {
+				statusName = args[1]
+			}
+			return command.Transition(cfg, args[0], statusName, transitionID)
+		},
+	}
+	cmd.Flags().String("id", "", "transition id to force (disambiguates multiple transitions to the same status)")
 	return cmd
 }
 

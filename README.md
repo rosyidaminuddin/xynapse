@@ -170,6 +170,15 @@ go test ./...
 ./bin/xynapse status MERADIO-123
 ./bin/xynapse status MERADIO-123 --set in_review
 
+# List the statuses a ticket can transition to
+./bin/xynapse transition MERADIO-123
+
+# Move a Jira ticket to a new status (by target status or transition name)
+./bin/xynapse transition MERADIO-123 "In Progress"
+
+# Force a specific transition when several lead to the same status
+./bin/xynapse transition MERADIO-123 --id 41
+
 # Create a feature branch (feature-v5/MERADIO-123) from main
 ./bin/xynapse prepare MERADIO-123 -b main
 
@@ -203,6 +212,7 @@ go test ./...
 - `--message <msg>` — commit message for `finalize` (default: `"<KEY>: <summary>"`)
 - `--pr` — create a pull request with `gh` after `finalize` pushes (requires `--base`)
 - `--set <status>` — update a plan's status with `status` (not started, in progress, in review, done)
+- `--id <id>` — force a specific transition for `transition` (disambiguates multiple transitions that lead to the same status)
 
 ### Implementation plans
 
@@ -272,6 +282,14 @@ When cached data is older than `expiration.hours`, `get-ticket` and `get-sprint`
 ### Storage layout
 
 Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`. When `board_id` is configured, `pull-sprint` looks up the active sprint via the Jira Agile API and stores its `sprint_id` and `sprint_name` in the manifest. Each ticket keeps both the raw ADF description JSON (`description`) and a flattened plain-text copy (`description_text`). Implementation plans from `plan` are saved under `storage/plans/<KEY>.md`, with their lifecycle `status` stored in the file's YAML frontmatter.
+
+### Jira status transitions
+
+`xynapse transition <ref> [status]` moves a ticket through its Jira workflow via the transitions API:
+
+- With a status argument, the ticket is moved to the matching status. The status is matched case-insensitively against both the transition's target status and its name. If several transitions lead to the same status, an error lists their IDs — pass `--id <id>` to pick one.
+- Without an argument, the available transitions (id, transition name, target status) are printed.
+- After a successful transition the locally cached ticket is re-fetched, so `get-ticket`, `get-sprint`, and plan-staleness reflect the new status.
 
 ## Help
 
