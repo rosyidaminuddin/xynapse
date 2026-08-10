@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"xynapse/internal/config"
 	"xynapse/internal/models"
 	"xynapse/internal/storage"
 )
@@ -145,5 +146,57 @@ func TestPrepareFlagOverridesPerType(t *testing.T) {
 	}
 	if branch := gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); branch != "custom/PROJ-1" {
 		t.Errorf("current branch = %q, want custom/PROJ-1", branch)
+	}
+}
+
+func TestPrepareUsesResolvedProjectConfig(t *testing.T) {
+	dir := initRepo(t, "")
+	base := t.TempDir()
+	writeTicketOfType(t, base, "PROJ-1", "Bug")
+	cfg := &config.Config{
+		Defaults: config.Defaults{Project: "OTHER"},
+		Storage:  config.StorageConfig{Base: base},
+		Git:      config.GitConfig{BranchTemplate: "feature-v5/{Key}"},
+		Projects: map[string]config.ProjectConfig{
+			"PROJ": {Git: config.GitConfig{
+				BranchTemplate:  "release/{Key}",
+				BranchTemplates: map[string]string{"Bug": "fix-v5/{Key}"},
+			}},
+		},
+	}
+
+	resolved, err := cfg.ResolveProject("PROJ")
+	if err != nil {
+		t.Fatalf("ResolveProject: %v", err)
+	}
+	if err := Prepare(resolved, "PROJ-1", dir, "main", "", false); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if branch := gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); branch != "fix-v5/PROJ-1" {
+		t.Errorf("current branch = %q, want fix-v5/PROJ-1 (per-project per-type template)", branch)
+	}
+}
+
+func TestPrepareUnconfiguredProjectFallsBackToGlobal(t *testing.T) {
+	dir := initRepo(t, "")
+	base := t.TempDir()
+	writeTicket(t, base, "PROJ-1")
+	cfg := &config.Config{
+		Storage: config.StorageConfig{Base: base},
+		Git:     config.GitConfig{BranchTemplate: "feature-v5/{Key}"},
+		Projects: map[string]config.ProjectConfig{
+			"ALPHA": {Git: config.GitConfig{BranchTemplate: "release/{Key}"}},
+		},
+	}
+
+	resolved, err := cfg.ResolveProject("PROJ")
+	if err != nil {
+		t.Fatalf("ResolveProject: %v", err)
+	}
+	if err := Prepare(resolved, "PROJ-1", dir, "main", "", false); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if branch := gitOut(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); branch != "feature-v5/PROJ-1" {
+		t.Errorf("current branch = %q, want feature-v5/PROJ-1 (global fallback)", branch)
 	}
 }

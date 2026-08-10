@@ -11,6 +11,24 @@ defaults:
   board_id: ""                 # Optional default board ID for sprint queries
   output_format: "table"       # Terminal output style: table, json, or yaml
 
+# Per-Project Settings (optional)
+# Define projects here to give each one its own board and branching strategy.
+# When exactly one project is configured it is used automatically; with more
+# than one, set defaults.project or pass -p/--project. Per-project git values
+# that are empty fall back to the top-level git section below.
+projects:
+  MERADIO:
+    board_id: "561"
+    git:
+      branch_template: "feature-v5/{Key}"
+      branch_templates:
+        Bug: "fix-v5/{Key}"
+        Epic: "epic-v5/{Key}"
+  ALPHA:
+    board_id: "99"
+    git:
+      branch_template: "release/{Key}"
+
 # Local Storage Settings
 storage:
   base: "~/.storage/xyanpse"

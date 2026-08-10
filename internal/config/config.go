@@ -10,13 +10,14 @@ import (
 )
 
 type Config struct {
-	Jira       JiraConfig     `yaml:"jira"`
-	Defaults   Defaults       `yaml:"defaults"`
-	Storage    StorageConfig  `yaml:"storage"`
-	Expiration Expiration     `yaml:"expiration"`
-	Opencode   OpencodeConfig `yaml:"opencode"`
-	Git        GitConfig      `yaml:"git"`
-	Verbose    bool           `yaml:"-"`
+	Jira       JiraConfig               `yaml:"jira"`
+	Defaults   Defaults                 `yaml:"defaults"`
+	Storage    StorageConfig            `yaml:"storage"`
+	Expiration Expiration               `yaml:"expiration"`
+	Opencode   OpencodeConfig           `yaml:"opencode"`
+	Git        GitConfig                `yaml:"git"`
+	Projects   map[string]ProjectConfig `yaml:"projects"`
+	Verbose    bool                     `yaml:"-"`
 }
 
 type JiraConfig struct {
@@ -30,6 +31,14 @@ type Defaults struct {
 	Project      string `yaml:"project"`
 	BoardID      string `yaml:"board_id"`
 	OutputFormat string `yaml:"output_format"`
+}
+
+// ProjectConfig holds per-project overrides, applied on top of the global
+// config when that project is selected. Git settings that are left empty fall
+// back to the top-level git config.
+type ProjectConfig struct {
+	BoardID string    `yaml:"board_id"`
+	Git     GitConfig `yaml:"git"`
 }
 
 type StorageConfig struct {
@@ -129,10 +138,72 @@ func (c *Config) Validate() error {
 	if c.Jira.APIToken == "" {
 		return fmt.Errorf("config error: jira.api_token is required (set it in ~/.config/xynapse/config.yaml or JIRA_API_TOKEN)")
 	}
-	if c.Defaults.Project == "" {
-		return fmt.Errorf("config error: defaults.project is required")
+	if c.Defaults.Project == "" && len(c.Projects) == 0 {
+		return fmt.Errorf("config error: defaults.project is required (or configure projects)")
 	}
 	return nil
+}
+
+// ResolveProject returns a copy of the config with the active project resolved
+// and its per-project overrides applied. The project key is chosen in order of
+// precedence: the -p/--project flag, defaults.project, or the single configured
+// project. With multiple projects and no default it errors. A flag project that
+// is not in the projects map is still accepted and falls back to the global
+// settings.
+func (c *Config) ResolveProject(flagProject string) (*Config, error) {
+	key, err := c.effectiveProject(flagProject)
+	if err != nil {
+		return nil, err
+	}
+
+	resolved := *c
+	resolved.Defaults.Project = key
+
+	if p, ok := c.findProject(key); ok {
+		if p.BoardID != "" {
+			resolved.Defaults.BoardID = p.BoardID
+		}
+		if p.Git.BranchTemplate != "" {
+			resolved.Git.BranchTemplate = p.Git.BranchTemplate
+		}
+		if p.Git.BranchTemplates != nil {
+			resolved.Git.BranchTemplates = p.Git.BranchTemplates
+		}
+	}
+	return &resolved, nil
+}
+
+// effectiveProject picks the project key without applying any overrides.
+func (c *Config) effectiveProject(flagProject string) (string, error) {
+	if flagProject != "" {
+		return flagProject, nil
+	}
+	if c.Defaults.Project != "" {
+		return c.Defaults.Project, nil
+	}
+	if len(c.Projects) == 1 {
+		for k := range c.Projects {
+			return k, nil
+		}
+	}
+	if len(c.Projects) > 1 {
+		return "", fmt.Errorf("no default project configured; set defaults.project or pass -p/--project")
+	}
+	return "", fmt.Errorf("config error: defaults.project is required")
+}
+
+// findProject looks up a project by exact key first, then case-insensitively.
+func (c *Config) findProject(key string) (ProjectConfig, bool) {
+	if p, ok := c.Projects[key]; ok {
+		return p, true
+	}
+	lower := strings.ToLower(strings.TrimSpace(key))
+	for k, v := range c.Projects {
+		if strings.ToLower(strings.TrimSpace(k)) == lower {
+			return v, true
+		}
+	}
+	return ProjectConfig{}, false
 }
 
 func loadEnvFile(path string) {

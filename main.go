@@ -56,12 +56,12 @@ so get commands can read them without hitting the server.`,
 			if err != nil {
 				return err
 			}
-			*cfg = *loaded
-			cfg.Verbose = verbose
-
-			if project != "" {
-				cfg.Defaults.Project = project
+			resolved, err := loaded.ResolveProject(project)
+			if err != nil {
+				return err
 			}
+			*cfg = *resolved
+			cfg.Verbose = verbose
 
 			if dir := os.Getenv("XYNAPSE_STORAGE"); dir != "" {
 				cfg.Storage.Base = dir
@@ -72,7 +72,7 @@ so get commands can read them without hitting the server.`,
 	}
 
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "log every step to stderr")
-	root.PersistentFlags().StringVarP(&project, "project", "p", "", "override the default project key")
+	root.PersistentFlags().StringVarP(&project, "project", "p", "", "project key to use (defaults to defaults.project or the single configured project)")
 
 	root.AddCommand(
 		newPullTicketCmd(cfg),

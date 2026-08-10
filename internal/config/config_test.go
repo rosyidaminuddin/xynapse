@@ -35,6 +35,19 @@ git:
   branch_templates:
     Bug: "fix-v5/{Key}"
     Epic: "epic/{Key}"
+
+projects:
+  MERADIO:
+    board_id: "561"
+    git:
+      branch_template: "feature-v5/{Key}"
+      branch_templates:
+        Bug: "fix-v5/{Key}"
+        Epic: "epic-v5/{Key}"
+  ALPHA:
+    board_id: "99"
+    git:
+      branch_template: "release/{Key}"
 `
 
 func writeConfig(t *testing.T, content string) string {
@@ -92,6 +105,12 @@ func TestLoadValid(t *testing.T) {
 	}
 	if cfg.Git.BranchTemplates["Bug"] != "fix-v5/{Key}" || cfg.Git.BranchTemplates["Epic"] != "epic/{Key}" {
 		t.Errorf("Git.BranchTemplates = %v", cfg.Git.BranchTemplates)
+	}
+	if cfg.Projects["MERADIO"].BoardID != "561" {
+		t.Errorf("Projects[MERADIO].BoardID = %q", cfg.Projects["MERADIO"].BoardID)
+	}
+	if cfg.Projects["MERADIO"].Git.BranchTemplates["Epic"] != "epic-v5/{Key}" {
+		t.Errorf("Projects[MERADIO] git = %v", cfg.Projects["MERADIO"].Git)
 	}
 }
 
@@ -176,10 +195,15 @@ func TestValidate(t *testing.T) {
 			Jira:     JiraConfig{URL: "https://x", Email: "e@e.com"},
 			Defaults: Defaults{Project: "PROJ"},
 		}, false},
-		{"missing project", &Config{
+		{"missing project and no projects", &Config{
 			Jira:     JiraConfig{URL: "https://x", Email: "e@e.com", APIToken: "t"},
 			Defaults: Defaults{},
 		}, false},
+		{"projects configured without default", &Config{
+			Jira:     JiraConfig{URL: "https://x", Email: "e@e.com", APIToken: "t"},
+			Defaults: Defaults{},
+			Projects: map[string]ProjectConfig{"PROJ": {}},
+		}, true},
 	}
 
 	for _, tc := range cases {
@@ -189,5 +213,120 @@ func TestValidate(t *testing.T) {
 				t.Errorf("Validate() = %v, want ok=%v", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestResolveProject(t *testing.T) {
+	base := func() *Config {
+		return &Config{
+			Defaults: Defaults{Project: "ALPHA", OutputFormat: "table"},
+			Git: GitConfig{
+				BranchTemplate:  "feature-v5/{Key}",
+				BranchTemplates: map[string]string{"Bug": "fix-v5/{Key}"},
+			},
+			Projects: map[string]ProjectConfig{
+				"ALPHA": {BoardID: "99", Git: GitConfig{BranchTemplate: "release/{Key}"}},
+				"BETA":  {BoardID: "42", Git: GitConfig{BranchTemplates: map[string]string{"Epic": "epic/{Key}"}}},
+			},
+		}
+	}
+
+	t.Run("flag wins", func(t *testing.T) {
+		cfg, err := base().ResolveProject("BETA")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Defaults.Project != "BETA" {
+			t.Errorf("project = %q, want BETA", cfg.Defaults.Project)
+		}
+		if cfg.Defaults.BoardID != "42" {
+			t.Errorf("BoardID = %q, want 42", cfg.Defaults.BoardID)
+		}
+		if cfg.Git.BranchTemplate != "feature-v5/{Key}" {
+			t.Errorf("BranchTemplate should fall back to global, got %q", cfg.Git.BranchTemplate)
+		}
+		if cfg.Git.BranchTemplates["Epic"] != "epic/{Key}" {
+			t.Errorf("BranchTemplates = %v", cfg.Git.BranchTemplates)
+		}
+		if cfg.Git.BranchTemplates["Bug"] != "" {
+			t.Errorf("per-project branch_templates should replace the global map, got %v", cfg.Git.BranchTemplates)
+		}
+	})
+
+	t.Run("default project", func(t *testing.T) {
+		cfg, err := base().ResolveProject("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Defaults.Project != "ALPHA" {
+			t.Errorf("project = %q, want ALPHA", cfg.Defaults.Project)
+		}
+		if cfg.Defaults.BoardID != "99" {
+			t.Errorf("BoardID = %q, want 99", cfg.Defaults.BoardID)
+		}
+		if cfg.Git.BranchTemplate != "release/{Key}" {
+			t.Errorf("BranchTemplate = %q, want release/{Key}", cfg.Git.BranchTemplate)
+		}
+	})
+
+	t.Run("case-insensitive flag", func(t *testing.T) {
+		cfg, err := base().ResolveProject("beta")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Defaults.Project != "beta" || cfg.Defaults.BoardID != "42" {
+			t.Errorf("project=%q board=%q, want beta/42", cfg.Defaults.Project, cfg.Defaults.BoardID)
+		}
+	})
+
+	t.Run("free-form flag falls back to global", func(t *testing.T) {
+		cfg, err := base().ResolveProject("ZETA")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Defaults.Project != "ZETA" || cfg.Defaults.BoardID != "" {
+			t.Errorf("project=%q board=%q", cfg.Defaults.Project, cfg.Defaults.BoardID)
+		}
+		if cfg.Git.BranchTemplate != "feature-v5/{Key}" {
+			t.Errorf("BranchTemplate = %q", cfg.Git.BranchTemplate)
+		}
+	})
+
+	t.Run("source config untouched", func(t *testing.T) {
+		src := base()
+		if _, err := src.ResolveProject("BETA"); err != nil {
+			t.Fatal(err)
+		}
+		if src.Defaults.Project != "ALPHA" {
+			t.Errorf("source Defaults.Project mutated to %q", src.Defaults.Project)
+		}
+	})
+}
+
+func TestResolveProjectSingleAutoDefault(t *testing.T) {
+	cfg := &Config{
+		Projects: map[string]ProjectConfig{"SOLO": {BoardID: "7"}},
+	}
+	resolved, err := cfg.ResolveProject("")
+	if err != nil {
+		t.Fatalf("ResolveProject: %v", err)
+	}
+	if resolved.Defaults.Project != "SOLO" {
+		t.Errorf("project = %q, want SOLO", resolved.Defaults.Project)
+	}
+	if resolved.Defaults.BoardID != "7" {
+		t.Errorf("BoardID = %q, want 7", resolved.Defaults.BoardID)
+	}
+}
+
+func TestResolveProjectAmbiguous(t *testing.T) {
+	cfg := &Config{
+		Projects: map[string]ProjectConfig{
+			"A": {BoardID: "1"},
+			"B": {BoardID: "2"},
+		},
+	}
+	if _, err := cfg.ResolveProject(""); err == nil {
+		t.Fatal("expected error for multiple projects without a default")
 	}
 }

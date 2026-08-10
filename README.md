@@ -55,6 +55,19 @@ git:
   branch_templates:                     # optional per-type overrides (matched case-insensitively)
     Bug: "fix-v5/{Key}"
     Epic: "epic/{Key}"
+
+projects:
+  MERADIO:
+    board_id: "561"
+    git:
+      branch_template: "feature-v5/{Key}"
+      branch_templates:
+        Bug: "fix-v5/{Key}"
+        Epic: "epic-v5/{Key}"
+  ALPHA:
+    board_id: "99"
+    git:
+      branch_template: "release/{Key}"
 ```
 
 Credentials are resolved from (highest priority first):
@@ -65,6 +78,19 @@ Credentials are resolved from (highest priority first):
 > Never commit credentials. `~/.config/xynapse/` is per-user and not shared.
 
 Set `XYNAPSE_CONFIG_DIR` to override the config directory and `XYNAPSE_STORAGE` to override the storage directory.
+
+### Multiple projects
+
+Define a `projects:` map to give each project its own board and branching strategy:
+
+- When **one** project is configured it is selected automatically.
+- With **multiple** projects, set `defaults.project` (or pass `-p/--project <KEY>`) to pick one.
+- Project keys are matched case-insensitively (`-p meradio` selects `MERADIO`).
+- `-p` accepts any key, configured or not. Unconfigured keys fall back to the global settings.
+- Per-project `board_id` and `git` values override the top-level ones; empty git fields (`branch_template`, `branch_templates`) fall back to the global `git` section.
+- A per-project `git.branch_templates` **replaces** the global map for that project.
+
+Storage is already per-project (`storage/<PROJECT>/...`), so tickets from different projects never collide.
 
 ## Build
 
@@ -145,7 +171,7 @@ go test ./...
 ### Flags
 
 - `-v`, `--verbose` — log every step to stderr
-- `-p`, `--project <KEY>` — override the default project for this invocation
+- `-p`, `--project <KEY>` — project key to use (defaults to `defaults.project` or the single configured project; see [Multiple projects](#multiple-projects))
 - `-t`, `--type <types>` — comma-separated issue types (e.g. `Story,Bug,Epic`). For `pull-sprint` it is applied as a JQL `issuetype in (...)` filter on the server; for `get-sprint` it filters the locally cached tickets.
 - `-o`, `--output <format>` — output format for `get-ticket`: `table`, `json`, or `yaml` (overrides config)
 - `-f`, `--force` — skip the confirmation prompt (`clear-cache`, `implement`) or the dirty-tree check (`prepare`)
