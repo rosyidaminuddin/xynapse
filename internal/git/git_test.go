@@ -126,3 +126,82 @@ func TestCreateBranchFromBase(t *testing.T) {
 		t.Errorf("CurrentBranch = %q", branch)
 	}
 }
+
+func TestIsInsideWorkTree(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir, "")
+	ok, err := g.IsInsideWorkTree()
+	if err != nil {
+		t.Fatalf("IsInsideWorkTree: %v", err)
+	}
+	if !ok {
+		t.Error("expected true inside a repo")
+	}
+
+	outside := New(t.TempDir(), "")
+	if ok, _ := outside.IsInsideWorkTree(); ok {
+		t.Error("expected false outside a repo")
+	}
+}
+
+func TestLocalBranches(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir, "")
+	if err := g.CreateBranch("feature-v5/PROJ-1"); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+
+	branches, err := g.LocalBranches()
+	if err != nil {
+		t.Fatalf("LocalBranches: %v", err)
+	}
+	got := strings.Join(branches, ",")
+	for _, want := range []string{"main", "feature-v5/PROJ-1"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("LocalBranches missing %q: %q", want, got)
+		}
+	}
+}
+
+func TestCommitSubjects(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir, "")
+	if err := g.CreateBranch("feature-v5/PROJ-1"); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "proj.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-q", "-m", "PROJ-1: Add stuff")
+
+	subjects, err := g.CommitSubjects()
+	if err != nil {
+		t.Fatalf("CommitSubjects: %v", err)
+	}
+	if !contains(subjects, "PROJ-1: Add stuff") {
+		t.Errorf("CommitSubjects = %v, want PROJ-1: Add stuff", subjects)
+	}
+}
+
+func TestCommitSubjectsEmptyRepo(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "-q")
+	g := New(dir, "")
+	subjects, err := g.CommitSubjects()
+	if err != nil {
+		t.Fatalf("CommitSubjects on empty repo: %v", err)
+	}
+	if len(subjects) != 0 {
+		t.Errorf("expected no subjects, got %v", subjects)
+	}
+}
+
+func contains(xs []string, want string) bool {
+	for _, x := range xs {
+		if x == want {
+			return true
+		}
+	}
+	return false
+}

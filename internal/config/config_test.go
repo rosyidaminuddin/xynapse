@@ -28,13 +28,12 @@ opencode:
   bin: "opencode"
   model: "anthropic/claude-sonnet-4"
   auto_approve: true
-  dir: "/work/repo"
 
 git:
+  dir: "/work/repo"
   branch_template: "feature-v5/{Key}"
   branch_templates:
     Bug: "fix-v5/{Key}"
-    Epic: "epic/{Key}"
 
 projects:
   MERADIO:
@@ -97,13 +96,13 @@ func TestLoadValid(t *testing.T) {
 	if !cfg.Opencode.AutoApprove {
 		t.Errorf("Opencode.AutoApprove = false, want true")
 	}
-	if cfg.Opencode.Dir != "/work/repo" {
-		t.Errorf("Opencode.Dir = %q", cfg.Opencode.Dir)
+	if cfg.Git.Dir != "/work/repo" {
+		t.Errorf("Git.Dir = %q, want /work/repo (loaded from top-level git)", cfg.Git.Dir)
 	}
 	if cfg.Git.BranchTemplate != "feature-v5/{Key}" {
 		t.Errorf("Git.BranchTemplate = %q, want feature-v5/{Key}", cfg.Git.BranchTemplate)
 	}
-	if cfg.Git.BranchTemplates["Bug"] != "fix-v5/{Key}" || cfg.Git.BranchTemplates["Epic"] != "epic/{Key}" {
+	if cfg.Git.BranchTemplates["Bug"] != "fix-v5/{Key}" {
 		t.Errorf("Git.BranchTemplates = %v", cfg.Git.BranchTemplates)
 	}
 	if cfg.Projects["MERADIO"].BoardID != "561" {
@@ -143,8 +142,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Opencode.AutoApprove {
 		t.Errorf("Opencode.AutoApprove default = true, want false")
 	}
-	if cfg.Git.BranchTemplate != "feature-v5/{Key}" {
-		t.Errorf("Git.BranchTemplate default = %q, want feature-v5/{Key}", cfg.Git.BranchTemplate)
+	if cfg.Git.BranchTemplate != "" {
+		t.Errorf("Git.BranchTemplate default = %q, want empty", cfg.Git.BranchTemplate)
 	}
 }
 
@@ -221,17 +220,18 @@ func TestResolveProject(t *testing.T) {
 		return &Config{
 			Defaults: Defaults{Project: "ALPHA", OutputFormat: "table"},
 			Git: GitConfig{
-				BranchTemplate:  "feature-v5/{Key}",
-				BranchTemplates: map[string]string{"Bug": "fix-v5/{Key}"},
+				Dir:             "/global",
+				BranchTemplate:  "global/{Key}",
+				BranchTemplates: map[string]string{"Bug": "fix-global/{Key}"},
 			},
 			Projects: map[string]ProjectConfig{
-				"ALPHA": {BoardID: "99", Git: GitConfig{BranchTemplate: "release/{Key}"}},
+				"ALPHA": {BoardID: "99", Git: GitConfig{Dir: "/work/alpha", BranchTemplate: "release/{Key}"}},
 				"BETA":  {BoardID: "42", Git: GitConfig{BranchTemplates: map[string]string{"Epic": "epic/{Key}"}}},
 			},
 		}
 	}
 
-	t.Run("flag wins", func(t *testing.T) {
+	t.Run("flag wins with merge", func(t *testing.T) {
 		cfg, err := base().ResolveProject("BETA")
 		if err != nil {
 			t.Fatal(err)
@@ -242,18 +242,23 @@ func TestResolveProject(t *testing.T) {
 		if cfg.Defaults.BoardID != "42" {
 			t.Errorf("BoardID = %q, want 42", cfg.Defaults.BoardID)
 		}
-		if cfg.Git.BranchTemplate != "feature-v5/{Key}" {
-			t.Errorf("BranchTemplate should fall back to global, got %q", cfg.Git.BranchTemplate)
+		// BETA leaves Dir and BranchTemplate empty: they inherit top-level git.
+		if cfg.Git.Dir != "/global" {
+			t.Errorf("Dir = %q, want /global (inherited from top-level)", cfg.Git.Dir)
 		}
+		if cfg.Git.BranchTemplate != "global/{Key}" {
+			t.Errorf("BranchTemplate = %q, want global/{Key} (inherited from top-level)", cfg.Git.BranchTemplate)
+		}
+		// BETA sets its own per-type map: it replaces the top-level map.
 		if cfg.Git.BranchTemplates["Epic"] != "epic/{Key}" {
 			t.Errorf("BranchTemplates = %v", cfg.Git.BranchTemplates)
 		}
 		if cfg.Git.BranchTemplates["Bug"] != "" {
-			t.Errorf("per-project branch_templates should replace the global map, got %v", cfg.Git.BranchTemplates)
+			t.Errorf("per-project branch_templates should replace the top-level map, got %v", cfg.Git.BranchTemplates)
 		}
 	})
 
-	t.Run("default project", func(t *testing.T) {
+	t.Run("default project overrides", func(t *testing.T) {
 		cfg, err := base().ResolveProject("")
 		if err != nil {
 			t.Fatal(err)
@@ -267,6 +272,13 @@ func TestResolveProject(t *testing.T) {
 		if cfg.Git.BranchTemplate != "release/{Key}" {
 			t.Errorf("BranchTemplate = %q, want release/{Key}", cfg.Git.BranchTemplate)
 		}
+		if cfg.Git.Dir != "/work/alpha" {
+			t.Errorf("Dir = %q, want /work/alpha", cfg.Git.Dir)
+		}
+		// ALPHA leaves the per-type map empty: it inherits the top-level map.
+		if cfg.Git.BranchTemplates["Bug"] != "fix-global/{Key}" {
+			t.Errorf("BranchTemplates = %v, want top-level Bug inherited", cfg.Git.BranchTemplates)
+		}
 	})
 
 	t.Run("case-insensitive flag", func(t *testing.T) {
@@ -279,7 +291,7 @@ func TestResolveProject(t *testing.T) {
 		}
 	})
 
-	t.Run("free-form flag falls back to global", func(t *testing.T) {
+	t.Run("free-form flag uses top-level git", func(t *testing.T) {
 		cfg, err := base().ResolveProject("ZETA")
 		if err != nil {
 			t.Fatal(err)
@@ -287,8 +299,25 @@ func TestResolveProject(t *testing.T) {
 		if cfg.Defaults.Project != "ZETA" || cfg.Defaults.BoardID != "" {
 			t.Errorf("project=%q board=%q", cfg.Defaults.Project, cfg.Defaults.BoardID)
 		}
-		if cfg.Git.BranchTemplate != "feature-v5/{Key}" {
-			t.Errorf("BranchTemplate = %q", cfg.Git.BranchTemplate)
+		if cfg.Git.BranchTemplate != "global/{Key}" {
+			t.Errorf("BranchTemplate = %q, want global/{Key}", cfg.Git.BranchTemplate)
+		}
+		if cfg.Git.Dir != "/global" {
+			t.Errorf("Dir = %q, want /global", cfg.Git.Dir)
+		}
+	})
+
+	t.Run("no projects and no top-level git defaults", func(t *testing.T) {
+		cfg := &Config{Defaults: Defaults{Project: "SOLO"}}
+		resolved, err := cfg.ResolveProject("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resolved.Git.BranchTemplate != "feature-v5/{Key}" {
+			t.Errorf("BranchTemplate = %q, want feature-v5/{Key}", resolved.Git.BranchTemplate)
+		}
+		if resolved.Git.Dir != "" {
+			t.Errorf("Dir = %q, want empty", resolved.Git.Dir)
 		}
 	})
 
@@ -328,5 +357,61 @@ func TestResolveProjectAmbiguous(t *testing.T) {
 	}
 	if _, err := cfg.ResolveProject(""); err == nil {
 		t.Fatal("expected error for multiple projects without a default")
+	}
+}
+
+func TestExpandDir(t *testing.T) {
+	t.Run("empty stays empty", func(t *testing.T) {
+		if got := ExpandDir(""); got != "" {
+			t.Errorf("ExpandDir(\"\") = %q, want empty", got)
+		}
+	})
+
+	t.Run("tilde expands to home", func(t *testing.T) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Skipf("no home dir: %v", err)
+		}
+		if got := ExpandDir("~"); got != home {
+			t.Errorf("ExpandDir(\"~\") = %q, want %q", got, home)
+		}
+		if got := ExpandDir("~/work/repo"); got != filepath.Join(home, "work", "repo") {
+			t.Errorf("ExpandDir(\"~/work/repo\") = %q, want %q", got, filepath.Join(home, "work", "repo"))
+		}
+	})
+
+	t.Run("relative becomes absolute", func(t *testing.T) {
+		want, err := filepath.Abs("work/repo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ExpandDir("work/repo"); got != want {
+			t.Errorf("ExpandDir(\"work/repo\") = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("absolute stays absolute", func(t *testing.T) {
+		if got := ExpandDir("/abs/path"); got != "/abs/path" {
+			t.Errorf("ExpandDir(\"/abs/path\") = %q, want /abs/path", got)
+		}
+	})
+}
+
+func TestResolveProjectExpandsGitDir(t *testing.T) {
+	cfg := &Config{
+		Defaults: Defaults{Project: "ALPHA"},
+		Git:      GitConfig{Dir: "~/work/repo"},
+	}
+	resolved, err := cfg.ResolveProject("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, herr := os.UserHomeDir()
+	if herr != nil {
+		t.Skipf("no home dir: %v", herr)
+	}
+	want := filepath.Join(home, "work", "repo")
+	if resolved.Git.Dir != want {
+		t.Errorf("Git.Dir = %q, want %q (tilde expanded)", resolved.Git.Dir, want)
 	}
 }

@@ -44,10 +44,17 @@ func printTable(tickets []*models.Ticket) {
 }
 
 // SprintTicket annotates a ticket with its plan status for sprint listing
-// output: "yes", "stale", or "no".
+// output: "yes", "stale", or "no". When git/gh checks ran, Finalized ("yes"/
+// "no"), PR ("merged"/"open"/"closed"/"none"), Target (the PR's base branch,
+// "-" when none), and Branch are also set; "?" marks a check that could not
+// run.
 type SprintTicket struct {
 	*models.Ticket
-	Plan string `json:"plan" yaml:"plan"`
+	Plan      string `json:"plan" yaml:"plan"`
+	Finalized string `json:"finalized" yaml:"finalized"`
+	PR        string `json:"pr" yaml:"pr"`
+	Target    string `json:"target" yaml:"target"`
+	Branch    string `json:"branch" yaml:"branch"`
 }
 
 func printSprintTickets(format string, tickets []SprintTicket) error {
@@ -72,9 +79,10 @@ func printSprintTickets(format string, tickets []SprintTicket) error {
 
 func printSprintTable(tickets []SprintTicket) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "KEY\tSTATUS\tPLAN\tTYPE\tASSIGNEE\tSUMMARY")
+	fmt.Fprintln(w, "KEY\tSTATUS\tFINALIZED\tPR\tTARGET\tBRANCH\tPLAN\tTYPE\tASSIGNEE\tSUMMARY")
 	for _, t := range tickets {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", t.Key, t.Status, t.Plan, t.Type, t.Assignee, t.Summary)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			t.Key, t.Status, t.Finalized, t.PR, t.Target, t.Branch, t.Plan, t.Type, t.Assignee, t.Summary)
 	}
 	w.Flush()
 }

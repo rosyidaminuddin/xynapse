@@ -20,6 +20,7 @@ projects:
   MERADIO:
     board_id: "561"
     git:
+      dir: "~/work/meradio"        # optional per-project repo directory
       branch_template: "feature-v5/{Key}"
       branch_templates:
         Bug: "fix-v5/{Key}"
@@ -44,10 +45,12 @@ opencode:
   bin: "opencode"      # Path or name of the opencode binary on PATH
   model: ""            # Optional provider/model override, e.g. "anthropic/claude-sonnet-4"
   auto_approve: false  # Pass --auto to opencode run (implement may edit files without prompting)
-  dir: ""              # Target repo directory (default: current working directory)
 
-# Git Integration (used by prepare and finalize commands)
+# Git Integration (used by all git commands: plan, implement, prepare, finalize,
+# get-sprint). Values here are the defaults for every project; a project can
+# override them via projects.<KEY>.git. Empty project git fields inherit here.
 git:
+  dir: ""              # Target repo directory (default: current working directory)
   branch_template: "feature-v5/{Key}"  # Branch naming for prepare; see README for placeholders
   branch_templates:                    # Optional per-issue-type overrides (case-insensitive)
     Bug: "fix-v5/{Key}"

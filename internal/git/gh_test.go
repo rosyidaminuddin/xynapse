@@ -58,3 +58,50 @@ func TestCreatePRMissingBinary(t *testing.T) {
 		t.Error("expected error for missing gh binary")
 	}
 }
+
+// stubGHOutput writes a fake `gh` executable that prints fixed output for any
+// invocation, and prepends its dir to PATH.
+func stubGHOutput(t *testing.T, output string) {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$GH_ARGS_FILE\"\nprintf '%s' " + quoteShell(output) + "\n"
+	path := filepath.Join(dir, "gh")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GH_ARGS_FILE", filepath.Join(dir, "gh_args.txt"))
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// quoteShell single-quotes s for safe embedding in a sh script.
+func quoteShell(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func TestPRStates(t *testing.T) {
+	stubGHOutput(t, `[{"number":1,"headRefName":"feature-v5/PROJ-1","state":"MERGED","baseRefName":"main"},{"number":2,"headRefName":"fix-v5/PROJ-2","state":"OPEN","baseRefName":"develop"}]`)
+
+	states, err := PRStates("gh", "")
+	if err != nil {
+		t.Fatalf("PRStates: %v", err)
+	}
+	if states["feature-v5/PROJ-1"].State != "merged" {
+		t.Errorf("PRStates[feature-v5/PROJ-1].State = %q, want merged", states["feature-v5/PROJ-1"].State)
+	}
+	if states["feature-v5/PROJ-1"].Base != "main" {
+		t.Errorf("PRStates[feature-v5/PROJ-1].Base = %q, want main", states["feature-v5/PROJ-1"].Base)
+	}
+	if states["fix-v5/PROJ-2"].State != "open" {
+		t.Errorf("PRStates[fix-v5/PROJ-2].State = %q, want open", states["fix-v5/PROJ-2"].State)
+	}
+	if states["fix-v5/PROJ-2"].Base != "develop" {
+		t.Errorf("PRStates[fix-v5/PROJ-2].Base = %q, want develop", states["fix-v5/PROJ-2"].Base)
+	}
+}
+
+func TestPRStatesMissingBinary(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if _, err := PRStates("gh-nonexistent", ""); err == nil {
+		t.Error("expected error for missing gh binary")
+	}
+}

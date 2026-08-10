@@ -30,14 +30,11 @@ defaults:
 expiration:
   hours: 24
 
-git:
-  branch_templates:
-    Bug: "fix-v5/{Key}"
-
 projects:
   MERADIO:
     board_id: "561"
     git:
+      branch_template: "feature-v5/{Key}"
       branch_templates:
         Bug: "fix-v5/{Key}"
         Epic: "epic-v5/{Key}"
@@ -52,8 +49,9 @@ func TestGet(t *testing.T) {
 		{"defaults.project", "ALPHA"},
 		{"defaults.board_id", "99"},
 		{"expiration.hours", "24"},
-		{"git.branch_templates.Bug", "fix-v5/{Key}"},
 		{"projects.MERADIO.board_id", "561"},
+		{"projects.MERADIO.git.branch_template", "feature-v5/{Key}"},
+		{"projects.MERADIO.git.branch_templates.Bug", "fix-v5/{Key}"},
 		{"projects.MERADIO.git.branch_templates.Epic", "epic-v5/{Key}"},
 	}
 	for _, tc := range cases {
@@ -69,16 +67,16 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestGetAppliesDefaults(t *testing.T) {
+func TestGetProjectGitValue(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	writeConfigFile(t, path, keysFixture)
 
-	got, err := Get(path, "", "git.branch_template")
+	got, err := Get(path, "", "projects.MERADIO.git.branch_template")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	if got != "feature-v5/{Key}" {
-		t.Errorf("git.branch_template = %q, want default feature-v5/{Key}", got)
+		t.Errorf("projects.MERADIO.git.branch_template = %q, want feature-v5/{Key}", got)
 	}
 }
 
@@ -111,12 +109,12 @@ func TestGetMidLevelKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	writeConfigFile(t, path, keysFixture)
 
-	got, err := Get(path, "", "git")
+	got, err := Get(path, "", "projects.MERADIO.git")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	if !strings.Contains(got, "branch_templates") || !strings.Contains(got, "fix-v5/{Key}") {
-		t.Errorf("git section = %q", got)
+		t.Errorf("projects.MERADIO.git section = %q", got)
 	}
 }
 

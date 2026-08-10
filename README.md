@@ -7,7 +7,7 @@ A CLI to manage Jira tickets locally. Tickets are fetched from the Jira REST API
 - Go 1.26+
 - A Jira Cloud account with API token access
 - [opencode](https://opencode.ai) CLI for the `plan` and `implement` commands
-- [gh](https://cli.github.com) CLI (installed and authenticated) for `finalize --pr`
+- [gh](https://cli.github.com) CLI (installed and authenticated) for `finalize --pr`. Optional for `get-sprint`: without it the PR column shows `?` and the command still works.
 
 ## Install
 
@@ -48,9 +48,9 @@ opencode:
   bin: "opencode"        # path or name of the opencode binary on PATH
   model: ""              # optional provider/model override, e.g. "anthropic/claude-sonnet-4"
   auto_approve: false    # pass --auto to opencode run (implement may edit files without prompting)
-  dir: ""                # target repo directory (default: current working directory)
 
 git:
+  dir: ""                            # target repo directory for plan/implement/prepare/finalize/get-sprint (default: cwd)
   branch_template: "feature-v5/{Key}"  # branch naming for `prepare`; see placeholders below
   branch_templates:                     # optional per-type overrides (matched case-insensitively)
     Bug: "fix-v5/{Key}"
@@ -60,6 +60,7 @@ projects:
   MERADIO:
     board_id: "561"
     git:
+      dir: "~/work/meradio"          # optional per-project repo directory
       branch_template: "feature-v5/{Key}"
       branch_templates:
         Bug: "fix-v5/{Key}"
@@ -106,7 +107,7 @@ Define a `projects:` map to give each project its own board and branching strate
 - With **multiple** projects, set `defaults.project` (or pass `-p/--project <KEY>`) to pick one.
 - Project keys are matched case-insensitively (`-p meradio` selects `MERADIO`).
 - `-p` accepts any key, configured or not. Unconfigured keys fall back to the global settings.
-- Per-project `board_id` and `git` values override the top-level ones; empty git fields (`branch_template`, `branch_templates`) fall back to the global `git` section.
+- Per-project `board_id` overrides the top-level one. A per-project `git` section is **merged** over the top-level `git` section field-by-field: only the fields a project sets are overridden, empty fields inherit the top-level value (e.g. `git.dir`), and an entirely empty `branch_template` falls back to the default `feature-v5/{Key}`.
 - A per-project `git.branch_templates` **replaces** the global map for that project.
 
 Storage is already per-project (`storage/<PROJECT>/...`), so tickets from different projects never collide.
@@ -140,12 +141,25 @@ go test ./...
 
 # List all tickets from the active sprint from local YAML (PLAN: yes/stale/no)
 ./bin/xynapse get-sprint
-
 # List only Epic tickets from the active sprint
 ./bin/xynapse get-sprint -t Epic
 
 # List tickets that have no saved plan yet
 ./bin/xynapse get-sprint --unplanned
+
+`get-sprint` shows one row per cached ticket with these columns:
+
+- `KEY` — ticket key
+- `STATUS` — Jira status
+- `FINALIZED` — `yes` when a local commit subject contains `<KEY>:` (see `finalize`); `no` otherwise
+- `PR` — pull-request state from `gh` for the ticket's branch (`merged`/`open`/`closed`/`none`)
+- `TARGET` — the PR's target (base) branch, e.g. `main` (`-` when there is no PR)
+- `BRANCH` — the local branch for the ticket, derived from the branch template or scanned by key
+- `PLAN` — plan state (`yes`/`stale`/`no`)
+- `TYPE`, `ASSIGNEE`, `SUMMARY` — ticket details
+
+The `FINALIZED`, `PR`, and `BRANCH` columns come from the configured git repo (`git.dir`,
+defaulting to cwd); outside a repo they show `?`.
 
 # Delete all locally cached tickets and plans (prompts for confirmation)
 ./bin/xynapse clear-cache
@@ -213,7 +227,7 @@ go test ./...
 - `-t`, `--type <types>` — comma-separated issue types (e.g. `Story,Bug,Epic`). For `pull-sprint` it is applied as a JQL `issuetype in (...)` filter on the server; for `get-sprint` it filters the locally cached tickets.
 - `-o`, `--output <format>` — output format for `get-ticket`: `table`, `json`, or `yaml` (overrides config)
 - `-f`, `--force` — skip the confirmation prompt (`clear-cache`, `implement`) or the dirty-tree check (`prepare`)
-- `--dir <repo>` — target repo directory for `plan`/`implement`/`prepare`/`finalize` (defaults to `opencode.dir`, then cwd)
+- `--dir <repo>` — target repo directory for `plan`/`implement`/`prepare`/`finalize` (defaults to `git.dir`, then cwd)
 - `--model <provider/model>` — override the opencode model for `plan`/`implement`
 - `-b`, `--branch <branch>` — check out this branch in the target repo before `plan` analyzes the ticket
 - `--plan <path>` — use a specific plan file for `implement` (default: `<storage>/plans/<KEY>.md`)
@@ -280,7 +294,7 @@ Branch template placeholders:
 | `{Key}` / `{TicketKey}` | full ticket key | `MERADIO-123` |
 | `{Project}` | project key | `MERADIO` |
 | `{Number}` | numeric part | `123` |
-| `{Board}` | board id from `defaults.board_id` | `561` |
+| `{Board}` | board id (`defaults.board_id`, overridable per project) | `561` |
 | `{Summary}` | slugified summary | `add-stale-detection` |
 
 For example, `{Project}/{TicketKey}` produces `MERADIO/MERADIO-123`. Unknown placeholders and missing required values (`{Key}`, `{Project}`, `{Number}`) are rejected.

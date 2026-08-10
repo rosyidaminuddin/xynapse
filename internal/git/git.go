@@ -63,6 +63,43 @@ func (g *Git) BranchExists(name string) bool {
 	return err == nil
 }
 
+// IsInsideWorkTree reports whether dir is inside a git working tree.
+func (g *Git) IsInsideWorkTree() (bool, error) {
+	out, err := g.run("rev-parse", "--is-inside-work-tree")
+	if err != nil {
+		return false, err
+	}
+	return out == "true", nil
+}
+
+// LocalBranches returns the short names of all local branches.
+func (g *Git) LocalBranches() ([]string, error) {
+	out, err := g.run("for-each-ref", "--format=%(refname:short)", "refs/heads")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
+// CommitSubjects returns the subject line of every commit reachable from any
+// local ref. An empty repository yields an empty list.
+func (g *Git) CommitSubjects() ([]string, error) {
+	out, err := g.run("log", "--all", "--format=%s")
+	if err != nil {
+		if strings.Contains(err.Error(), "does not have any commits") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 // Checkout switches to an existing branch or commit.
 func (g *Git) Checkout(ref string) error {
 	_, err := g.run("checkout", ref)

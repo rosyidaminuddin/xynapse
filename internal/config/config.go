@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -10,14 +11,19 @@ import (
 )
 
 type Config struct {
-	Jira       JiraConfig               `yaml:"jira"`
-	Defaults   Defaults                 `yaml:"defaults"`
-	Storage    StorageConfig            `yaml:"storage"`
-	Expiration Expiration               `yaml:"expiration"`
-	Opencode   OpencodeConfig           `yaml:"opencode"`
-	Git        GitConfig                `yaml:"git"`
-	Projects   map[string]ProjectConfig `yaml:"projects"`
-	Verbose    bool                     `yaml:"-"`
+	Jira     JiraConfig               `yaml:"jira"`
+	Defaults Defaults                 `yaml:"defaults"`
+	Storage  StorageConfig            `yaml:"storage"`
+	Expiration Expiration             `yaml:"expiration"`
+	Opencode OpencodeConfig           `yaml:"opencode"`
+	// Git is the repository and branching configuration: dir locates the
+	// project repository for all git/gh commands, branch_template and
+	// branch_templates name feature branches. The top-level values act as
+	// defaults; per-project overrides live under projects.<KEY>.git and are
+	// merged on top by ResolveProject.
+	Git      GitConfig                `yaml:"git"`
+	Projects map[string]ProjectConfig `yaml:"projects"`
+	Verbose  bool                     `yaml:"-"`
 }
 
 type JiraConfig struct {
@@ -34,7 +40,7 @@ type Defaults struct {
 }
 
 // ProjectConfig holds per-project overrides, applied on top of the global
-// config when that project is selected. Git settings that are left empty fall
+// config when that project is selected. Git fields that are left empty fall
 // back to the top-level git config.
 type ProjectConfig struct {
 	BoardID string    `yaml:"board_id"`
@@ -50,7 +56,6 @@ type OpencodeConfig struct {
 	Bin         string `yaml:"bin"`
 	Model       string `yaml:"model"`
 	AutoApprove bool   `yaml:"auto_approve"`
-	Dir         string `yaml:"dir"`
 }
 
 // Expiration controls how long locally cached tickets stay fresh before
@@ -59,8 +64,14 @@ type Expiration struct {
 	Hours int `yaml:"hours"`
 }
 
-// GitConfig controls how xynapse drives git/gh for prepare and finalize.
+// GitConfig controls how xynapse drives git/gh for a project's prepare,
+// finalize, and get-sprint status. Configured at the top level (defaults) and
+// overridable per-project under projects.<KEY>.git.
 type GitConfig struct {
+	// Dir is the repository directory the git/gh checks run in and where
+	// plan/implement/prepare/finalize operate. When empty, commands fall back
+	// to the current working directory.
+	Dir string `yaml:"dir"`
 	// BranchTemplate expands to a feature branch name for a ticket. Supported
 	// placeholders: {Key}/{TicketKey}, {Project}, {Number}, {Board}, {Summary}.
 	// Used as the fallback when no per-type template matches.
@@ -120,9 +131,6 @@ func Load(path, envPath string) (*Config, error) {
 	if cfg.Opencode.Bin == "" {
 		cfg.Opencode.Bin = "opencode"
 	}
-	if cfg.Git.BranchTemplate == "" {
-		cfg.Git.BranchTemplate = "feature-v5/{Key}"
-	}
 
 	return &cfg, nil
 }
@@ -144,12 +152,31 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// ExpandDir expands a leading "~" to the user's home directory and makes the
+// path absolute against the process working directory. An empty input stays
+// empty so callers can fall back to the current working directory.
+func ExpandDir(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if dir == "~" || strings.HasPrefix(dir, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
+		}
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	return dir
+}
+
 // ResolveProject returns a copy of the config with the active project resolved
 // and its per-project overrides applied. The project key is chosen in order of
 // precedence: the -p/--project flag, defaults.project, or the single configured
 // project. With multiple projects and no default it errors. A flag project that
 // is not in the projects map is still accepted and falls back to the global
-// settings.
+// settings. Per-project git fields override the top-level git section
+// field-by-field; empty fields keep the top-level value.
 func (c *Config) ResolveProject(flagProject string) (*Config, error) {
 	key, err := c.effectiveProject(flagProject)
 	if err != nil {
@@ -163,13 +190,20 @@ func (c *Config) ResolveProject(flagProject string) (*Config, error) {
 		if p.BoardID != "" {
 			resolved.Defaults.BoardID = p.BoardID
 		}
+		if p.Git.Dir != "" {
+			resolved.Git.Dir = p.Git.Dir
+		}
 		if p.Git.BranchTemplate != "" {
 			resolved.Git.BranchTemplate = p.Git.BranchTemplate
 		}
-		if p.Git.BranchTemplates != nil {
+		if len(p.Git.BranchTemplates) > 0 {
 			resolved.Git.BranchTemplates = p.Git.BranchTemplates
 		}
 	}
+	if resolved.Git.BranchTemplate == "" {
+		resolved.Git.BranchTemplate = "feature-v5/{Key}"
+	}
+	resolved.Git.Dir = ExpandDir(resolved.Git.Dir)
 	return &resolved, nil
 }
 
