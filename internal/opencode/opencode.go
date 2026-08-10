@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -108,7 +109,13 @@ func runStreaming(cmd *exec.Cmd, w io.Writer) (string, error) {
 			outBuf.WriteByte('\n')
 			st.event(sc.Bytes())
 		}
-		outErrCh <- sc.Err()
+		// Wait may close the pipe once the process exits, racing the drain;
+		// treat that as a clean end of output, not a failure.
+		if err := sc.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
+			outErrCh <- err
+			return
+		}
+		outErrCh <- nil
 	}()
 
 	var errBuf bytes.Buffer

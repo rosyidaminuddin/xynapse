@@ -14,18 +14,24 @@ skill) and asks you to execute it in the current repository.
 
 1. Read the plan carefully. Understand the requirements checklist and the
    implementation steps.
-2. Explore the repository to locate the files mentioned in each step. If a
+2. Check the plan for a `## Confirmations` section. If it lists numbered
+   questions that the `## Decisions` section does not answer, do NOT implement
+   anything. Warn the user and list the unanswered questions, then stop.
+3. Explore the repository to locate the files mentioned in each step. If a
    referenced file does not exist or the plan is out of date with the current
    code, adapt sensibly and note the deviation.
-3. Implement the changes step by step, in order. Run the relevant tests and
+4. Implement the changes step by step, in order. Run the relevant tests and
    build/lint commands for the project as you go.
-4. Verify each acceptance criterion from the plan. Report which pass and which
+5. Verify each acceptance criterion from the plan. Report which pass and which
    do not.
 
 ## Rules
 
 - Follow the plan's steps and order unless the code dictates otherwise; then
   explain the deviation.
+- Treat the answers recorded in the plan's `## Decisions` section as hard
+  constraints. Never ask the user for a decision mid-implementation — the
+  decisions were already confirmed before execution started.
 - Do not touch files or code that the plan does not require. Keep the diff
   focused on the ticket.
 - If a step is ambiguous, prefer the interpretation recorded in the plan's

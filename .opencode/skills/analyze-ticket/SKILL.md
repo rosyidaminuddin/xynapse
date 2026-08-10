@@ -20,13 +20,35 @@ Return a markdown document with these sections:
    the description. Use `- [ ]` checkboxes.
 3. **Design considerations** — anything that constrains the implementation
    (existing patterns, architecture, edge cases, risks). Only if relevant.
-4. **Implementation steps** — ordered steps, each with a filename or component
+4. **Confirmations** — decisions the implementer would otherwise have to ask
+   the user about during implementation. Capture every such decision as a
+   numbered question with a suggested default, one per line. If nothing needs
+   confirming, write `None.`.
+5. **Implementation steps** — ordered steps, each with a filename or component
    it touches and a short description of what changes. Be specific and
    concrete; avoid generic advice.
-5. **Acceptance criteria** — how to verify each requirement is met. Reuse the
+6. **Acceptance criteria** — how to verify each requirement is met. Reuse the
    same checklist IDs from Requirements so they can be traced 1:1.
-6. **Out of scope** — anything the description mentions but that is not
+7. **Out of scope** — anything the description mentions but that is not
    required for this ticket.
+
+The Confirmations section must follow this exact format so the xynapse CLI can
+parse it and ask the user for answers before implementation:
+
+```markdown
+## Confirmations
+
+1. Which database should the new table live in? (default: PostgreSQL)
+2. Should the migration run automatically on deploy? (default: no)
+```
+
+If there is nothing to confirm:
+
+```markdown
+## Confirmations
+
+None.
+```
 
 ## Rules
 
@@ -34,6 +56,9 @@ Return a markdown document with these sections:
   the ticket does not ask for.
 - If the description is ambiguous, call out the ambiguity explicitly in
   "Design considerations" and propose the most likely interpretation.
+- Never pause for user input during implementation. Any decision the
+  implementer would otherwise have to ask about must be captured as a numbered
+  question in "Confirmations" with a suggested default.
 - Keep each implementation step small enough to review and execute in one
   coding session.
 - Do not modify any files. You are only producing a plan.

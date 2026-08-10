@@ -71,6 +71,22 @@ func (s *Storage) SetPlanStatus(project, ticketKey, status string) error {
 
 	body, meta := splitFrontmatter(string(data))
 	meta["status"] = normalizeStatus(status)
+	return s.writePlan(path, meta, body)
+}
+
+// RewritePlanBody replaces a ticket's plan markdown body while preserving its
+// frontmatter (including the status) exactly.
+func (s *Storage) RewritePlanBody(project, ticketKey, body string) error {
+	path := s.GetPlanPath(project, ticketKey)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("no plan found at %s: %w", path, err)
+	}
+	_, meta := splitFrontmatter(string(data))
+	return s.writePlan(path, meta, body)
+}
+
+func (s *Storage) writePlan(path string, meta map[string]string, body string) error {
 	front, err := yaml.Marshal(meta)
 	if err != nil {
 		return fmt.Errorf("failed to marshal plan frontmatter: %w", err)

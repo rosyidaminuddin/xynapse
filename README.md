@@ -198,6 +198,31 @@ Each plan file carries a lifecycle **status** in its YAML frontmatter: `not star
 
 A plan is **stale** when the ticket changed on Jira after it was written. `get-sprint` reflects this in the PLAN column (`yes`/`stale`/`no`), and `show-plan` warns on stderr. `implement` warns and asks for confirmation before running a stale plan; pass `--force` to skip the prompt. Staleness is only checked when the ticket is cached — plan-only workflows keep working offline.
 
+### Confirmations and decisions
+
+The `analyze-ticket` skill never pauses for input during implementation. Instead, any decision the implementer would otherwise have to ask about is written into the plan as a numbered question in the `## Confirmations` section, each with a suggested default:
+
+```markdown
+## Confirmations
+
+1. Which database should the new table live in? (default: PostgreSQL)
+2. Should the migration run automatically on deploy? (default: no)
+```
+
+`xynapse implement <ref>` checks the plan before launching opencode. Unanswered confirmations are prompted for in the terminal:
+
+```sh
+plan requires 2 confirmation(s) before implementing. Answer each question; press Enter to accept the suggested default.
+
+  1. Which database should the new table live in? [PostgreSQL]: postgres
+  2. Should the migration run automatically on deploy? [no]: yes
+```
+
+- Press **Enter** to accept the suggested default; type a value to override it. `Ctrl-C` cancels and **nothing is implemented**.
+- Answers are recorded in a `## Decisions` section in the plan file (e.g. `- 1. postgres`), so `show-plan` displays them and re-running `implement` does not ask again.
+- The `implement-plan` skill treats those decisions as hard constraints and refuses to implement a plan that still has unanswered confirmations. `--force` does **not** skip confirmation prompts.
+- If the plan has no `## Confirmations` section (or it says `None.`), `implement` runs as before without prompting.
+
 While opencode works, its activity is streamed live to stderr — each tool call (bash command, file edit, read, etc.) is printed as `  [tool] title` the moment it runs — so you can watch what the agent is doing in the terminal. Assistant text is shown once, when the command finishes.
 
 Review the plan before executing. Skills require the opencode CLI to be installed and authenticated. Markdown output (`plan` plans, `implement` reports) is styled in the terminal with [glamour](https://github.com/charmbracelet/glamour) (the rendering engine behind [glow](https://github.com/charmbracelet/glow)); when piped or redirected, the raw markdown is passed through unchanged.
