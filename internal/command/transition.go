@@ -83,7 +83,7 @@ func executeTransition(cfg *config.Config, c *client.JiraClient, project, number
 // refreshTicket silently re-fetches a ticket from Jira and rewrites the local
 // cache so the status and updated timestamp stay current.
 func refreshTicket(cfg *config.Config, c *client.JiraClient, project, number string) error {
-	ticket, err := c.FetchTicket(project, number)
+	ticket, err := c.FetchTicket(project, number, cfg.AcceptanceCriteriaField())
 	if err != nil {
 		return err
 	}

@@ -67,7 +67,7 @@ func Assignee(cfg *config.Config, ticketRef, user string) error {
 // showAssignee fetches the ticket live and prints its current assignee.
 func showAssignee(cfg *config.Config, c *client.JiraClient, project, number string) error {
 	logStep(cfg.Verbose, "fetching ticket %s-%s", project, number)
-	ticket, err := c.FetchTicket(project, number)
+	ticket, err := c.FetchTicket(project, number, cfg.AcceptanceCriteriaField())
 	if err != nil {
 		return err
 	}

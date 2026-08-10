@@ -4,6 +4,11 @@ jira:
   email: ""
   api_token: ""
   timeout_seconds: 15
+  # Map of logical field names to Jira custom field ids. Mapped fields are
+  # requested when pulling tickets/sprints and stored in the local ticket YAML.
+  # Overridable per project via projects.<KEY>.custom_fields.
+  custom_fields:
+    acceptance_criteria: ""    # e.g. "customfield_10001" — ticket's acceptance criteria
 
 # Default CLI Preferences
 defaults:
@@ -33,6 +38,10 @@ projects:
     workflow:
       target_branch: "develop"     # PRs target develop instead of the top-level default
       test_status: "QA"            # tickets move to QA after their PR merges
+    # Per-project custom field overrides merge over the top-level jira.custom_fields
+    # field-by-field; keys not set here inherit the top-level value.
+    custom_fields:
+      acceptance_criteria: "customfield_10001"
   ALPHA:
     board_id: "99"
     git:

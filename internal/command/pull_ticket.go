@@ -18,7 +18,7 @@ func PullTicket(cfg *config.Config, ticketRef string) error {
 	c := client.NewJiraClient(cfg.Jira.URL, cfg.Jira.Email, cfg.Jira.APIToken, cfg.Jira.TimeoutSeconds)
 
 	logStep(cfg.Verbose, "fetching ticket %s-%s from Jira", project, number)
-	ticket, err := c.FetchTicket(project, number)
+	ticket, err := c.FetchTicket(project, number, cfg.AcceptanceCriteriaField())
 	if err != nil {
 		return err
 	}

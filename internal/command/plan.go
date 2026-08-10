@@ -57,6 +57,9 @@ func ticketDossier(t *models.Ticket) string {
 	if desc != "" {
 		fmt.Fprintf(&b, "\nDescription:\n%s\n", desc)
 	}
+	if ac := strings.TrimSpace(t.AcceptanceCriteriaText); ac != "" {
+		fmt.Fprintf(&b, "\nAcceptance Criteria:\n%s\n", ac)
+	}
 	return b.String()
 }
 

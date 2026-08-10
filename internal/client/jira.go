@@ -66,7 +66,7 @@ func (c *JiraClient) do(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-func (c *JiraClient) FetchTicket(project string, ticketNum string) (*models.Ticket, error) {
+func (c *JiraClient) FetchTicket(project string, ticketNum string, acceptanceCriteriaField string) (*models.Ticket, error) {
 	issueKey := fmt.Sprintf("%s-%s", project, ticketNum)
 	endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s", c.baseURL, issueKey)
 
@@ -93,7 +93,7 @@ func (c *JiraClient) FetchTicket(project string, ticketNum string) (*models.Tick
 		return nil, fmt.Errorf("failed to parse issue JSON: %w", err)
 	}
 
-	ticket := models.MapRawToTicket(&rawIssue)
+	ticket := models.MapRawToTicket(&rawIssue, acceptanceCriteriaField)
 	return ticket, nil
 }
 
@@ -398,9 +398,19 @@ func BuildSprintJQL(project string, sprintID int, types []string) string {
 	return jql
 }
 
+// defaultIssueFields are the fields requested from the search endpoint. Callers
+// can add custom field ids via SearchIssues.
+var defaultIssueFields = []string{
+	"summary", "description", "project", "status", "assignee", "updated", "id", "key", "issuetype",
+}
+
 // SearchIssues runs a JQL query against the enhanced search endpoint
-// (/rest/api/3/search/jql), following nextPageToken pagination.
-func (c *JiraClient) SearchIssues(jql string) ([]models.JiraRawIssue, error) {
+// (/rest/api/3/search/jql), following nextPageToken pagination. extraFields are
+// appended to the requested fields so custom fields are returned by the API.
+func (c *JiraClient) SearchIssues(jql string, extraFields []string) ([]models.JiraRawIssue, error) {
+	fields := defaultIssueFields
+	fields = append(fields, extraFields...)
+
 	var allIssues []models.JiraRawIssue
 	nextPageToken := ""
 
@@ -408,7 +418,7 @@ func (c *JiraClient) SearchIssues(jql string) ([]models.JiraRawIssue, error) {
 		params := url.Values{}
 		params.Set("jql", jql)
 		params.Set("maxResults", "50")
-		params.Set("fields", "summary, description, project, status, assignee, updated, id, key, issuetype")
+		params.Set("fields", strings.Join(fields, ","))
 		if nextPageToken != "" {
 			params.Set("nextPageToken", nextPageToken)
 		}
@@ -454,18 +464,23 @@ func (c *JiraClient) SearchIssues(jql string) ([]models.JiraRawIssue, error) {
 }
 
 // FetchSprintTickets fetches all issues in the current active sprint assigned to the
-// authenticated user, optionally filtered by issue type(s).
-func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []string) ([]*models.Ticket, error) {
+// authenticated user, optionally filtered by issue type(s). acceptanceCriteriaField,
+// when non-empty, is requested and stored on each ticket.
+func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []string, acceptanceCriteriaField string) ([]*models.Ticket, error) {
 	jql := BuildSprintJQL(project, sprintID, types)
 
-	issues, err := c.SearchIssues(jql)
+	var extraFields []string
+	if acceptanceCriteriaField != "" {
+		extraFields = []string{acceptanceCriteriaField}
+	}
+	issues, err := c.SearchIssues(jql, extraFields)
 	if err != nil {
 		return nil, err
 	}
 
 	tickets := make([]*models.Ticket, 0, len(issues))
 	for i := range issues {
-		tickets = append(tickets, models.MapRawToTicket(&issues[i]))
+		tickets = append(tickets, models.MapRawToTicket(&issues[i], acceptanceCriteriaField))
 	}
 	return tickets, nil
 }

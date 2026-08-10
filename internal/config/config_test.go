@@ -477,6 +477,55 @@ func TestResolveProjectAmbiguous(t *testing.T) {
 	}
 }
 
+func TestResolveProjectCustomFieldsMerge(t *testing.T) {
+	doc := `jira:
+  url: "https://example.atlassian.net"
+  email: "user@example.com"
+  api_token: "token123"
+  custom_fields:
+    acceptance_criteria: "customfield_10001"
+    story_points: "customfield_10002"
+
+projects:
+  MERADIO:
+    board_id: "561"
+    custom_fields:
+      acceptance_criteria: "customfield_20001"
+`
+	path := writeConfig(t, doc)
+	cfg, err := Load(path, filepath.Join(filepath.Dir(path), ".env"))
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.AcceptanceCriteriaField() != "customfield_10001" {
+		t.Errorf("AcceptanceCriteriaField = %q, want customfield_10001", cfg.AcceptanceCriteriaField())
+	}
+
+	// MERADIO overrides acceptance_criteria; story_points inherits top-level.
+	resolved, err := cfg.ResolveProject("MERADIO")
+	if err != nil {
+		t.Fatalf("ResolveProject: %v", err)
+	}
+	if resolved.Jira.CustomFields["acceptance_criteria"] != "customfield_20001" {
+		t.Errorf("acceptance_criteria = %q, want per-project override customfield_20001", resolved.Jira.CustomFields["acceptance_criteria"])
+	}
+	if resolved.Jira.CustomFields["story_points"] != "customfield_10002" {
+		t.Errorf("story_points = %q, want inherited customfield_10002", resolved.Jira.CustomFields["story_points"])
+	}
+	if resolved.AcceptanceCriteriaField() != "customfield_20001" {
+		t.Errorf("AcceptanceCriteriaField = %q, want customfield_20001", resolved.AcceptanceCriteriaField())
+	}
+
+	// A project with no custom_fields keeps the top-level map intact.
+	solo, err := cfg.ResolveProject("NOPE")
+	if err != nil {
+		t.Fatalf("ResolveProject: %v", err)
+	}
+	if solo.AcceptanceCriteriaField() != "customfield_10001" {
+		t.Errorf("AcceptanceCriteriaField = %q, want customfield_10001 for unconfigured project", solo.AcceptanceCriteriaField())
+	}
+}
+
 func TestExpandDir(t *testing.T) {
 	t.Run("empty stays empty", func(t *testing.T) {
 		if got := ExpandDir(""); got != "" {

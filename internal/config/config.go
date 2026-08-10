@@ -31,10 +31,25 @@ type Config struct {
 }
 
 type JiraConfig struct {
-	URL            string `yaml:"url"`
-	Email          string `yaml:"email"`
-	APIToken       string `yaml:"api_token"`
-	TimeoutSeconds int    `yaml:"timeout_seconds"`
+	URL            string            `yaml:"url"`
+	Email          string            `yaml:"email"`
+	APIToken       string            `yaml:"api_token"`
+	TimeoutSeconds int               `yaml:"timeout_seconds"`
+	// CustomFields maps logical field names (e.g. "acceptance_criteria") to
+	// Jira custom field ids (e.g. "customfield_10001"). The mapped fields are
+	// requested when pulling tickets/sprints and stored in the local ticket
+	// YAML. Values can be overridden per project via projects.<KEY>.custom_fields.
+	CustomFields map[string]string `yaml:"custom_fields"`
+}
+
+// CustomFieldAcceptanceCriteria is the custom_fields key holding a ticket's
+// acceptance criteria (a Jira ADF or plain-text field).
+const CustomFieldAcceptanceCriteria = "acceptance_criteria"
+
+// AcceptanceCriteriaField returns the configured Jira custom field id that
+// holds a ticket's acceptance criteria, or "" when unset.
+func (c *Config) AcceptanceCriteriaField() string {
+	return c.Jira.CustomFields[CustomFieldAcceptanceCriteria]
 }
 
 type Defaults struct {
@@ -47,9 +62,10 @@ type Defaults struct {
 // config when that project is selected. Git and workflow fields that are left
 // empty fall back to the top-level git/workflow config.
 type ProjectConfig struct {
-	BoardID  string         `yaml:"board_id"`
-	Git      GitConfig      `yaml:"git"`
-	Workflow WorkflowConfig `yaml:"workflow"`
+	BoardID      string         `yaml:"board_id"`
+	Git          GitConfig      `yaml:"git"`
+	Workflow     WorkflowConfig `yaml:"workflow"`
+	CustomFields map[string]string `yaml:"custom_fields"`
 }
 
 type StorageConfig struct {
@@ -253,6 +269,16 @@ func (c *Config) ResolveProject(flagProject string) (*Config, error) {
 		}
 		if p.Workflow.Autopilot != nil {
 			resolved.Workflow.Autopilot = p.Workflow.Autopilot
+		}
+		if len(p.CustomFields) > 0 {
+			merged := make(map[string]string, len(resolved.Jira.CustomFields)+len(p.CustomFields))
+			for k, v := range resolved.Jira.CustomFields {
+				merged[k] = v
+			}
+			for k, v := range p.CustomFields {
+				merged[k] = v
+			}
+			resolved.Jira.CustomFields = merged
 		}
 	}
 	if resolved.Git.BranchTemplate == "" {

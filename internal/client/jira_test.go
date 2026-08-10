@@ -343,3 +343,73 @@ func TestSetAssigneeError(t *testing.T) {
 		t.Fatalf("err = %v, want 400", err)
 	}
 }
+
+func TestFetchTicketWithAcceptanceCriteria(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/rest/api/3/issue/PROJ-1") {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, `{
+			"id": "10000",
+			"key": "PROJ-1",
+			"fields": {
+				"summary": "AC ticket",
+				"description": null,
+				"customfield_10001": {
+					"type": "doc",
+					"content": [
+						{"type": "bulletList", "content": [
+							{"type": "listItem", "content": [
+								{"type": "paragraph", "content": [
+									{"type": "text", "text": "AC line"}
+								]}
+							]}
+						]}
+					]
+				},
+				"issuetype": {"name": "Story"},
+				"project": {"key": "PROJ"},
+				"status": {"name": "To Do"},
+				"assignee": {"displayName": "Adin"},
+				"updated": "2026-08-09T10:00:00.000+0000"
+			}
+		}`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	ticket, err := c.FetchTicket("PROJ", "1", "customfield_10001")
+	if err != nil {
+		t.Fatalf("FetchTicket: %v", err)
+	}
+	if ticket.AcceptanceCriteriaText != "AC line" {
+		t.Errorf("AcceptanceCriteriaText = %q, want %q", ticket.AcceptanceCriteriaText, "AC line")
+	}
+	if ticket.AcceptanceCriteria == "" {
+		t.Error("AcceptanceCriteria should hold the raw ADF JSON")
+	}
+}
+
+func TestSearchIssuesRequestsCustomField(t *testing.T) {
+	var gotFields string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/rest/api/3/search/jql") {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		gotFields = r.URL.Query().Get("fields")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, `{"issues":[],"isLast":true}`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	if _, err := c.SearchIssues(`project = "PROJ"`, []string{"customfield_10001"}); err != nil {
+		t.Fatalf("SearchIssues: %v", err)
+	}
+	if !strings.Contains(gotFields, "customfield_10001") {
+		t.Errorf("fields param = %q, want it to include customfield_10001", gotFields)
+	}
+}

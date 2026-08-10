@@ -39,6 +39,8 @@ jira:
   email: "you@example.com"
   api_token: ""          # or set via JIRA_API_TOKEN
   timeout_seconds: 15
+  custom_fields:         # map of logical names to Jira custom field ids
+    acceptance_criteria: "customfield_10001"  # ticket's acceptance criteria (ADF or text), stored in ticket YAML
 
 defaults:
   project: "MERADIO"
@@ -90,6 +92,8 @@ projects:
     workflow:
       target_branch: "develop"       # PRs target develop instead of main
       test_status: "QA"              # tickets move to QA after their PR merges
+    custom_fields:                   # optional per-project overrides, merged field-by-field
+      acceptance_criteria: "customfield_10001"
   ALPHA:
     board_id: "99"
     git:
