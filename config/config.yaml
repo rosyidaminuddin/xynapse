@@ -14,8 +14,8 @@ defaults:
 # Per-Project Settings (optional)
 # Define projects here to give each one its own board and branching strategy.
 # When exactly one project is configured it is used automatically; with more
-# than one, set defaults.project or pass -p/--project. Per-project git values
-# that are empty fall back to the top-level git section below.
+# than one, set defaults.project or pass -p/--project. Per-project git and
+# workflow values that are empty fall back to the top-level sections below.
 projects:
   MERADIO:
     board_id: "561"
@@ -25,10 +25,19 @@ projects:
       branch_templates:
         Bug: "fix-v5/{Key}"
         Epic: "epic-v5/{Key}"
+    # Per-project workflow is optional and merges over the top-level workflow
+    # field-by-field: only the fields set here override the defaults below.
+    # Here MERADIO drives its PRs into develop and moves tickets to "QA" after
+    # merge; everything else (test/lint commands, base_branch, autopilot) is
+    # inherited from the top-level workflow.
+    workflow:
+      target_branch: "develop"     # PRs target develop instead of the top-level default
+      test_status: "QA"            # tickets move to QA after their PR merges
   ALPHA:
     board_id: "99"
     git:
       branch_template: "release/{Key}"
+    # No workflow section: ALPHA uses the top-level workflow as-is.
 
 # Local Storage Settings
 storage:

@@ -1,6 +1,13 @@
 # xynapse
 
-A CLI to manage Jira tickets locally. Tickets are fetched from the Jira REST API and cached as YAML files, so `get` commands read from disk without hitting the server.
+A CLI to manage Jira tickets locally and drive them through a full development workflow.
+
+- **Pull & cache** — fetch tickets and sprints from the Jira REST API and store them as YAML, so `get` commands read from disk without hitting the server.
+- **Query** — view tickets (`get-ticket`) and sprint boards (`get-sprint`) with plan/PR/branch status in plain text, JSON, or YAML.
+- **Plan & implement** — delegate to opencode to generate a step-by-step implementation plan and execute it in a repo, with plan confirmations answered in the terminal.
+- **Ship** — `prepare` creates a feature branch, `finalize` commits, pushes, and opens a pull request via `gh`.
+- **Update Jira** — `transition` moves tickets between statuses, `assignee` manages owners, and `drive` ties it all together.
+- **Drive** — one command runs a ticket through the whole pipeline (branch → plan → implement → test → lint → finalize → ticket), waits for the PR to merge, then updates Jira automatically.
 
 ## Requirements
 
@@ -75,10 +82,19 @@ projects:
       branch_templates:
         Bug: "fix-v5/{Key}"
         Epic: "epic-v5/{Key}"
+    # Per-project workflow is optional and merges over the top-level workflow
+    # field-by-field: only the fields set here override the defaults above.
+    # Here MERADIO drives its PRs into develop and moves tickets to "QA" after
+    # merge; everything else (test/lint commands, base_branch, autopilot) is
+    # inherited from the top-level workflow.
+    workflow:
+      target_branch: "develop"       # PRs target develop instead of main
+      test_status: "QA"              # tickets move to QA after their PR merges
   ALPHA:
     board_id: "99"
     git:
       branch_template: "release/{Key}"
+    # No workflow section: ALPHA uses the top-level workflow as-is.
 ```
 
 Credentials are resolved from (highest priority first):
@@ -119,6 +135,7 @@ Define a `projects:` map to give each project its own board and branching strate
 - `-p` accepts any key, configured or not. Unconfigured keys fall back to the global settings.
 - Per-project `board_id` overrides the top-level one. A per-project `git` section is **merged** over the top-level `git` section field-by-field: only the fields a project sets are overridden, empty fields inherit the top-level value (e.g. `git.dir`), and an entirely empty `branch_template` falls back to the default `feature-v5/{Key}`.
 - A per-project `git.branch_templates` **replaces** the global map for that project.
+- A per-project `workflow` section is **merged** over the top-level `workflow` the same way `git` is: only the fields a project sets are overridden, empty fields inherit the top-level value, and an unset `target_branch` falls back to `base_branch`. Projects without a `workflow` section use the top-level workflow unchanged.
 
 Storage is already per-project (`storage/<PROJECT>/...`), so tickets from different projects never collide.
 
