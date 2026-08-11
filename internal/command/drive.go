@@ -255,9 +255,9 @@ func driveBranchStep(ctx *driveCtx, ticket *models.Ticket) (bool, error) {
 		return true, nil
 	}
 
-	base := ctx.cfg.Workflow.BaseBranch
+	base := ctx.opts.Base
 	if base == "" {
-		base = ctx.opts.Base
+		base = ctx.cfg.Workflow.BaseBranch
 	}
 	if base == "" {
 		return false, fmt.Errorf("workflow.base_branch is not configured; set it or pass --base")
