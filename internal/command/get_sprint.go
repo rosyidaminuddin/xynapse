@@ -55,7 +55,10 @@ func GetSprint(cfg *config.Config, types []string, unplanned bool) error {
 		logStep(cfg.Verbose, "filtered to %d ticket(s) of type(s) %v", len(tickets), types)
 	}
 
-	snap := collectGitSnapshot(cfg)
+	var snap gitSnapshot
+	if !unplanned {
+		snap = collectGitSnapshot(cfg)
+	}
 
 	views := make([]SprintTicket, 0, len(tickets))
 	for _, ticket := range tickets {
@@ -132,17 +135,7 @@ func sprintBranch(cfg *config.Config, ticket *models.Ticket, snap gitSnapshot) (
 		return "", statusUnknown
 	}
 
-	tmpl := git.ResolveTemplate(cfg.Git.BranchTemplate, cfg.Git.BranchTemplates, ticket.Type)
-	if tmpl == "" {
-		tmpl = "feature-v5/{Key}"
-	}
-	derived, err := git.ExpandTemplate(tmpl, git.TemplateVars{
-		Key:     ticket.Key,
-		Project: ticket.Project,
-		Number:  ticketNumber(ticket.Key),
-		Board:   cfg.Defaults.BoardID,
-		Summary: ticket.Summary,
-	})
+	derived, err := expandBranch(cfg, ticket, "")
 	if err != nil {
 		logStep(cfg.Verbose, "could not expand branch template for %s: %v", ticket.Key, err)
 		return "", statusUnknown
@@ -215,23 +208,6 @@ func effectiveBranch(local, derived string) string {
 		return local
 	}
 	return derived
-}
-
-// ticketNumber returns the numeric part of a ticket key ("PROJ-1" -> "1").
-func ticketNumber(key string) string {
-	if i := strings.LastIndex(key, "-"); i >= 0 {
-		return key[i+1:]
-	}
-	return key
-}
-
-func containsString(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // filterUnplanned keeps only tickets that have no saved plan.

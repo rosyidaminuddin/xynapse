@@ -27,8 +27,12 @@ Return a markdown document with these sections:
 5. **Implementation steps** — ordered steps, each with a filename or component
    it touches and a short description of what changes. Be specific and
    concrete; avoid generic advice.
-6. **Acceptance criteria** — how to verify each requirement is met. Reuse the
-   same checklist IDs from Requirements so they can be traced 1:1.
+6. **Acceptance criteria** — how to verify each requirement is met. If the
+   ticket dossier includes an `Acceptance Criteria:` block, reuse those
+   criteria VERBATIM — the plan must fulfill them, not approximate them. Map
+   each requirement to the corresponding ticket AC (reusing the ticket's own
+   wording) so they can be traced 1:1. Only when the ticket has no
+   `Acceptance Criteria:` block, derive ACs from the description yourself.
 7. **Out of scope** — anything the description mentions but that is not
    required for this ticket.
 
@@ -54,6 +58,10 @@ None.
 
 - Base the plan ONLY on the ticket content provided. Do not invent work that
   the ticket does not ask for.
+- When the ticket already has acceptance criteria, they are the authoritative
+  definition of done. The plan's Acceptance criteria section must carry them
+  verbatim; Implementation steps and Requirements must be shaped to satisfy
+  them. Do not rewrite, soften, or substitute different criteria.
 - If the description is ambiguous, call out the ambiguity explicitly in
   "Design considerations" and propose the most likely interpretation.
 - Never pause for user input during implementation. Any decision the

@@ -19,25 +19,7 @@ func Prepare(cfg *config.Config, ticketRef, dir, base, template string, force bo
 		return err
 	}
 
-	tmpl := template
-	if tmpl == "" {
-		tmpl = git.ResolveTemplate(cfg.Git.BranchTemplate, cfg.Git.BranchTemplates, ticket.Type)
-	}
-	if tmpl == "" {
-		tmpl = "feature-v5/{Key}"
-	}
-
-	_, number, err := ParseTicketRef(ticketRef, cfg.Defaults.Project)
-	if err != nil {
-		return err
-	}
-	branch, err := git.ExpandTemplate(tmpl, git.TemplateVars{
-		Key:     ticket.Key,
-		Project: ticket.Project,
-		Number:  number,
-		Board:   cfg.Defaults.BoardID,
-		Summary: ticket.Summary,
-	})
+	branch, err := expandBranch(cfg, ticket, template)
 	if err != nil {
 		return err
 	}

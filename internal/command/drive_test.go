@@ -214,3 +214,91 @@ func TestDriveTestStepFailForceBypasses(t *testing.T) {
 		t.Error("failure should still be recorded under --force")
 	}
 }
+
+func driveACSuccess() string {
+	return `Implementation complete.
+
+## AC Results
+
+- [x] AC one
+- [x] AC two
+`
+}
+
+func driveACPartial() string {
+	return `Implementation complete.
+
+## AC Results
+
+- [x] AC one
+- [ ] AC two
+`
+}
+
+func TestDriveCheckACAllPass(t *testing.T) {
+	s := storage.NewStorage(t.TempDir())
+	if err := s.WriteReport("PROJ", "PROJ-1", driveACSuccess()); err != nil {
+		t.Fatalf("WriteReport: %v", err)
+	}
+	ticket := &models.Ticket{Key: "PROJ-1", Project: "PROJ"}
+	ctx := &driveCtx{s: s}
+	_, failed := driveCheckAC(ctx, ticket)
+	if failed {
+		t.Error("all-pass ACs should not fail the gate")
+	}
+}
+
+func TestDriveCheckACPartialFails(t *testing.T) {
+	s := storage.NewStorage(t.TempDir())
+	if err := s.WriteReport("PROJ", "PROJ-1", driveACPartial()); err != nil {
+		t.Fatalf("WriteReport: %v", err)
+	}
+	ticket := &models.Ticket{Key: "PROJ-1", Project: "PROJ"}
+	ctx := &driveCtx{s: s}
+	_, failed := driveCheckAC(ctx, ticket)
+	if !failed {
+		t.Error("partial ACs should fail the gate")
+	}
+}
+
+func TestDriveCheckACMissingReportFails(t *testing.T) {
+	s := storage.NewStorage(t.TempDir())
+	ticket := &models.Ticket{Key: "PROJ-1", Project: "PROJ"}
+	ctx := &driveCtx{s: s}
+	_, failed := driveCheckAC(ctx, ticket)
+	if !failed {
+		t.Error("missing report should fail the gate")
+	}
+}
+
+func TestDriveCheckACNoACSectionFails(t *testing.T) {
+	s := storage.NewStorage(t.TempDir())
+	if err := s.WriteReport("PROJ", "PROJ-1", "# done\n"); err != nil {
+		t.Fatalf("WriteReport: %v", err)
+	}
+	ticket := &models.Ticket{Key: "PROJ-1", Project: "PROJ"}
+	ctx := &driveCtx{s: s}
+	_, failed := driveCheckAC(ctx, ticket)
+	if !failed {
+		t.Error("report without AC Results section should fail the gate")
+	}
+}
+
+func TestDriveCheckACClearRecordedFailure(t *testing.T) {
+	s := storage.NewStorage(t.TempDir())
+	if err := s.SetDriveFailure("PROJ", "PROJ-1", stepAC, "old failure"); err != nil {
+		t.Fatalf("SetDriveFailure: %v", err)
+	}
+	if err := s.WriteReport("PROJ", "PROJ-1", driveACSuccess()); err != nil {
+		t.Fatalf("WriteReport: %v", err)
+	}
+	ticket := &models.Ticket{Key: "PROJ-1", Project: "PROJ"}
+	ctx := &driveCtx{s: s}
+	_, failed := driveCheckAC(ctx, ticket)
+	if failed {
+		t.Error("gate should pass after clearing failure")
+	}
+	if _, stillFailed := s.DriveStepFailed("PROJ", "PROJ-1", stepAC); stillFailed {
+		t.Error("recorded AC failure should be cleared on success")
+	}
+}

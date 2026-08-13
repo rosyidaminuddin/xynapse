@@ -4,6 +4,10 @@ jira:
   email: ""
   api_token: ""
   timeout_seconds: 15
+  # Override the built-in sprint query for pull-sprint. When set, this replaces
+  # the default "assignee = currentUser()" JQL entirely (e.g. to scope a sprint
+  # to a team or a saved filter). Overridable per project via projects.<KEY>.sprint_jql.
+  sprint_jql: ""
   # Map of logical field names to Jira custom field ids. Mapped fields are
   # requested when pulling tickets/sprints and stored in the local ticket YAML.
   # Overridable per project via projects.<KEY>.custom_fields.
@@ -63,6 +67,7 @@ opencode:
   bin: "opencode"      # Path or name of the opencode binary on PATH
   model: ""            # Optional provider/model override, e.g. "anthropic/claude-sonnet-4"
   auto_approve: false  # Pass --auto to opencode run (implement may edit files without prompting)
+  timeout_seconds: 0   # Cancel an opencode run after this many seconds; 0 disables
 
 # Git Integration (used by all git commands: plan, implement, prepare, finalize,
 # get-sprint). Values here are the defaults for every project; a project can
@@ -86,3 +91,6 @@ workflow:
   target_branch: ""      # PR merge target (defaults to base_branch when empty)
   comment_template: ""   # Jira comment posted after merge; placeholders {key}, {summary}, {url}, {branch}
   autopilot: false       # Behave as if --yes was always passed to drive
+  command_timeout_seconds: 0   # Cancel test/lint commands after this many seconds; 0 disables
+  poll_interval_seconds: 30    # How often drive --wait polls the PR while waiting for a merge
+  poll_timeout_seconds: 1800   # Max time drive --wait waits for a merge before giving up

@@ -35,6 +35,10 @@ type JiraConfig struct {
 	Email          string            `yaml:"email"`
 	APIToken       string            `yaml:"api_token"`
 	TimeoutSeconds int               `yaml:"timeout_seconds"`
+	// SprintJQL overrides the built-in sprint query used by pull-sprint. When
+	// set, it replaces the default `assignee = currentUser()` JQL entirely,
+	// so the sprint can be scoped to a team, board, or filter.
+	SprintJQL string `yaml:"sprint_jql"`
 	// CustomFields maps logical field names (e.g. "acceptance_criteria") to
 	// Jira custom field ids (e.g. "customfield_10001"). The mapped fields are
 	// requested when pulling tickets/sprints and stored in the local ticket
@@ -62,10 +66,12 @@ type Defaults struct {
 // config when that project is selected. Git and workflow fields that are left
 // empty fall back to the top-level git/workflow config.
 type ProjectConfig struct {
-	BoardID      string         `yaml:"board_id"`
-	Git          GitConfig      `yaml:"git"`
-	Workflow     WorkflowConfig `yaml:"workflow"`
+	BoardID      string            `yaml:"board_id"`
+	Git          GitConfig         `yaml:"git"`
+	Workflow     WorkflowConfig    `yaml:"workflow"`
 	CustomFields map[string]string `yaml:"custom_fields"`
+	// SprintJQL overrides jira.sprint_jql for this project; empty inherits.
+	SprintJQL string `yaml:"sprint_jql"`
 }
 
 type StorageConfig struct {
@@ -77,6 +83,18 @@ type OpencodeConfig struct {
 	Bin         string `yaml:"bin"`
 	Model       string `yaml:"model"`
 	AutoApprove bool   `yaml:"auto_approve"`
+	// TimeoutSeconds cancels an opencode run that exceeds this duration;
+	// 0 disables the timeout.
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+}
+
+// Timeout returns the opencode run timeout as a time.Duration (0 when
+// disabled).
+func (o OpencodeConfig) Timeout() time.Duration {
+	if o.TimeoutSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(o.TimeoutSeconds) * time.Second
 }
 
 // Expiration controls how long locally cached tickets stay fresh before
@@ -129,6 +147,40 @@ type WorkflowConfig struct {
 	// answered with their suggested defaults and interactive prompts are
 	// skipped. nil means unset.
 	Autopilot *bool `yaml:"autopilot"`
+	// CommandTimeoutSeconds cancels the workflow test/lint commands when they
+	// exceed this duration; 0 disables the timeout.
+	CommandTimeoutSeconds int `yaml:"command_timeout_seconds"`
+	// PollIntervalSeconds is how often drive --wait polls the PR state while
+	// waiting for it to merge. 0 uses a 30s default.
+	PollIntervalSeconds int `yaml:"poll_interval_seconds"`
+	// PollTimeoutSeconds bounds how long drive --wait waits for a merge before
+	// giving up. 0 uses a 30m default.
+	PollTimeoutSeconds int `yaml:"poll_timeout_seconds"`
+}
+
+// TestTimeout returns the workflow command timeout as a time.Duration (0 when
+// disabled).
+func (w WorkflowConfig) TestTimeout() time.Duration {
+	if w.CommandTimeoutSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(w.CommandTimeoutSeconds) * time.Second
+}
+
+// PollInterval returns the drive --wait poll interval (default 30s).
+func (w WorkflowConfig) PollInterval() time.Duration {
+	if w.PollIntervalSeconds <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(w.PollIntervalSeconds) * time.Second
+}
+
+// PollTimeout returns the drive --wait poll timeout (default 30m).
+func (w WorkflowConfig) PollTimeout() time.Duration {
+	if w.PollTimeoutSeconds <= 0 {
+		return 30 * time.Minute
+	}
+	return time.Duration(w.PollTimeoutSeconds) * time.Second
 }
 
 // Duration returns the expiry window as a time.Duration (0 when disabled).
@@ -270,6 +322,15 @@ func (c *Config) ResolveProject(flagProject string) (*Config, error) {
 		if p.Workflow.Autopilot != nil {
 			resolved.Workflow.Autopilot = p.Workflow.Autopilot
 		}
+		if p.Workflow.CommandTimeoutSeconds > 0 {
+			resolved.Workflow.CommandTimeoutSeconds = p.Workflow.CommandTimeoutSeconds
+		}
+		if p.Workflow.PollIntervalSeconds > 0 {
+			resolved.Workflow.PollIntervalSeconds = p.Workflow.PollIntervalSeconds
+		}
+		if p.Workflow.PollTimeoutSeconds > 0 {
+			resolved.Workflow.PollTimeoutSeconds = p.Workflow.PollTimeoutSeconds
+		}
 		if len(p.CustomFields) > 0 {
 			merged := make(map[string]string, len(resolved.Jira.CustomFields)+len(p.CustomFields))
 			for k, v := range resolved.Jira.CustomFields {
@@ -279,6 +340,9 @@ func (c *Config) ResolveProject(flagProject string) (*Config, error) {
 				merged[k] = v
 			}
 			resolved.Jira.CustomFields = merged
+		}
+		if p.SprintJQL != "" {
+			resolved.Jira.SprintJQL = p.SprintJQL
 		}
 	}
 	if resolved.Git.BranchTemplate == "" {

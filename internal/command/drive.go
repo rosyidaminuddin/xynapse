@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"xynapse/internal/client"
 	"xynapse/internal/config"
@@ -22,6 +23,9 @@ const (
 	stepLint      = "lint"
 	stepFinalize  = "finalize"
 	stepTicket    = "ticket"
+	// stepAC is not a runnable pipeline step; it is the failure key used by the
+	// finalize gate to record unmet acceptance criteria.
+	stepAC = "ac"
 )
 
 var driveSteps = []string{stepBranch, stepPlan, stepImplement, stepTest, stepLint, stepFinalize, stepTicket}
@@ -39,7 +43,7 @@ type DriveOptions struct {
 	// Auto enables autopilot: confirmations use their suggested defaults and
 	// interactive prompts are skipped.
 	Auto bool
-	// Force bypasses failed test/lint gates and the stale-plan prompt.
+	// Force bypasses failed test/lint/ac gates and the stale-plan prompt.
 	Force bool
 	// DryRun prints the steps drive would run without executing them.
 	DryRun bool
@@ -47,6 +51,12 @@ type DriveOptions struct {
 	Step string
 	From string
 	To   string
+	// Wait makes drive poll until the PR merges and then run the ticket step
+	// automatically instead of stopping and telling the user to re-run.
+	Wait bool
+	// WaitTimeout bounds how long --wait polls for a merge (overrides
+	// workflow.poll_timeout_seconds).
+	WaitTimeout time.Duration
 }
 
 // Drive drives a single ticket through the whole workflow: prepare the branch,
@@ -206,17 +216,7 @@ func indexOf(xs []string, s string) int {
 // derivedBranch expands the configured branch template for a ticket, mirroring
 // Prepare's logic so PR lookup and branch creation agree.
 func derivedBranch(cfg *config.Config, ticket *models.Ticket) (string, error) {
-	tmpl := git.ResolveTemplate(cfg.Git.BranchTemplate, cfg.Git.BranchTemplates, ticket.Type)
-	if tmpl == "" {
-		tmpl = "feature-v5/{Key}"
-	}
-	return git.ExpandTemplate(tmpl, git.TemplateVars{
-		Key:     ticket.Key,
-		Project: ticket.Project,
-		Number:  ticketNumber(ticket.Key),
-		Board:   cfg.Defaults.BoardID,
-		Summary: ticket.Summary,
-	})
+	return expandBranch(cfg, ticket, "")
 }
 
 // drivePRTarget resolves the PR base branch: --base, else
@@ -320,7 +320,7 @@ func driveTestStep(ctx *driveCtx, ticket *models.Ticket, step string) (bool, err
 	}
 
 	fmt.Printf("Running %s: %s\n", label, command)
-	out, err := ctx.g.Test(command)
+	out, err := ctx.g.TestContext(command, ctx.cfg.Workflow.TestTimeout())
 	if strings.TrimSpace(out) != "" {
 		fmt.Println(strings.TrimSpace(out))
 	}
@@ -342,6 +342,9 @@ func driveFinalizeStep(ctx *driveCtx, ticket *models.Ticket) (bool, error) {
 	if msg, failed := ctx.s.DriveStepFailed(ticket.Project, ticket.Key, stepLint); failed && !ctx.opts.Force {
 		return false, fmt.Errorf("cannot finalize: lint failed (%s); pass --force to override", msg)
 	}
+	if msg, failed := driveCheckAC(ctx, ticket); failed && !ctx.opts.Force {
+		return false, fmt.Errorf("cannot finalize: %s; pass --force to override", msg)
+	}
 
 	target := drivePRTarget(ctx.cfg, ctx.opts.Base)
 	if target == "" {
@@ -351,9 +354,69 @@ func driveFinalizeStep(ctx *driveCtx, ticket *models.Ticket) (bool, error) {
 	if err := Finalize(ctx.cfg, ctx.opts.TicketRef, ctx.opts.Dir, target, "", true); err != nil {
 		return false, err
 	}
+	if ctx.opts.Wait {
+		return true, waitForMerge(ctx, ticket)
+	}
 	fmt.Printf("Waiting for PR to be merged before updating ticket %s.\n", ticket.Key)
 	fmt.Printf("Re-run `xynapse drive %s` once the PR is merged.\n", ctx.opts.TicketRef)
 	return true, nil
+}
+
+// driveCheckAC verifies the implement report's acceptance-criteria results. It
+// reports the summary message and whether any criterion is unchecked (or the
+// report is missing results for a plan that lists ACs). The --force flag
+// bypasses the resulting gate, exactly like a failed test.
+func driveCheckAC(ctx *driveCtx, ticket *models.Ticket) (msg string, failed bool) {
+	report, ok := ctx.s.ReadReport(ticket.Project, ticket.Key)
+	if !ok {
+		return "no implement report found; acceptance criteria cannot be verified", true
+	}
+	results, found := parseACResults(report)
+	if !found {
+		return "implement report has no acceptance criteria results", true
+	}
+	if len(results) == 0 {
+		return "acceptance criteria results are empty", true
+	}
+	for _, r := range results {
+		if !r.Pass {
+			return "acceptance criteria not fully met: " + acResultsSummary(results), true
+		}
+	}
+	_ = ctx.s.ClearDriveFailure(ticket.Project, ticket.Key, stepAC)
+	return acResultsSummary(results), false
+}
+
+// waitForMerge polls the PR state until it merges (or the poll timeout).
+func waitForMerge(ctx *driveCtx, ticket *models.Ticket) error {
+	branch, err := derivedBranch(ctx.cfg, ticket)
+	if err != nil {
+		return err
+	}
+	interval := ctx.cfg.Workflow.PollInterval()
+	timeout := ctx.cfg.Workflow.PollTimeout()
+	if ctx.opts.WaitTimeout > 0 {
+		timeout = ctx.opts.WaitTimeout
+	}
+
+	fmt.Printf("Waiting for PR on %s to be merged (polling every %s, up to %s). Ctrl-C to stop.\n",
+		branch, interval, timeout)
+
+	deadline := time.Now().Add(timeout)
+	for {
+		pr, err := git.PRView("gh", ctx.opts.Dir, branch)
+		if err != nil {
+			return err
+		}
+		if pr.State == "merged" {
+			fmt.Printf("PR #%d merged.\n", pr.Number)
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for PR on %s to merge after %s; re-run `xynapse drive %s` once merged", branch, timeout, ctx.opts.TicketRef)
+		}
+		time.Sleep(interval)
+	}
 }
 
 // driveTicketStep runs only after the PR is merged. Until then it prints the

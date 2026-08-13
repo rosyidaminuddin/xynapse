@@ -29,7 +29,7 @@ func PullSprint(cfg *config.Config, types []string) error {
 	}
 
 	logStep(cfg.Verbose, "querying current sprint issues for project %s (assignee=currentUser(), types=%v)", cfg.Defaults.Project, types)
-	tickets, err := c.FetchSprintTickets(cfg.Defaults.Project, sprintID, types, cfg.AcceptanceCriteriaField())
+	tickets, err := c.FetchSprintTickets(cfg.Defaults.Project, sprintID, types, cfg.AcceptanceCriteriaField(), cfg.Jira.SprintJQL)
 	if err != nil {
 		return err
 	}

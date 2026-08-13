@@ -129,3 +129,41 @@ func TestFinalizePRWithoutBase(t *testing.T) {
 		t.Fatal("expected error when --pr is used without a base branch")
 	}
 }
+
+func TestFinalizePRBodyIncludesACChecklist(t *testing.T) {
+	remote := initRemote(t)
+	dir := initRepo(t, remote)
+	runGit(t, dir, "checkout", "-q", "-b", "feature-v5/PROJ-1")
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("implemented\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	argsFile := filepath.Join(t.TempDir(), "gh_args.txt")
+	stubGH(t, argsFile)
+
+	base := t.TempDir()
+	writeTicket(t, base, "PROJ-1")
+	writePlanFile(t, base, "PROJ-1", []byte("# plan"))
+	cfg := testConfig(base)
+	cfg.Jira.URL = "https://example.atlassian.net"
+	if err := storage.NewStorage(base).WriteReport("PROJ", "PROJ-1",
+		"# Implement\n\n## AC Results\n\n- [x] Criterion one\n- [ ] Criterion two\n"); err != nil {
+		t.Fatalf("WriteReport: %v", err)
+	}
+
+	captureStdout(t, func() {
+		if err := Finalize(cfg, "PROJ-1", dir, "main", "", true); err != nil {
+			t.Fatalf("Finalize: %v", err)
+		}
+	})
+
+	data, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## Checklist", "- [x] Criterion one", "- [ ] Criterion two"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("PR body missing %q: %q", want, string(data))
+		}
+	}
+}

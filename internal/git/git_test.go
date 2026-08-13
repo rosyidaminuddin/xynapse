@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func runGit(t *testing.T, dir string, args ...string) {
@@ -242,6 +243,52 @@ func TestTestCommandRunsInRepoDir(t *testing.T) {
 	}
 	if out != "main" {
 		t.Errorf("git command should run inside the repo dir, got %q", out)
+	}
+}
+
+func TestTestCommandFiltersSecretsFromChildEnv(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir, "")
+	t.Setenv("JIRA_API_TOKEN", "super-secret")
+	t.Setenv("JIRA_EMAIL", "me@corp.com")
+
+	out, err := g.Test("env | sort")
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if strings.Contains(out, "JIRA_API_TOKEN") {
+		t.Errorf("JIRA_API_TOKEN leaked into child env:\n%s", out)
+	}
+	if !strings.Contains(out, "JIRA_EMAIL") {
+		t.Errorf("JIRA_EMAIL should be kept in child env:\n%s", out)
+	}
+}
+
+func TestTestCommandTimeoutKillsHangingCommand(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir, "")
+	start := time.Now()
+	_, err := g.TestContext("sleep 30", 300*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("command should have been killed by timeout, took %v", elapsed)
+	}
+	if !strings.Contains(err.Error(), "signal: killed") && !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Errorf("error should mention kill/deadline, got %v", err)
+	}
+}
+
+func TestTestContextZeroTimeoutNoDeadline(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir, "")
+	out, err := g.TestContext("echo hi", 0)
+	if err != nil {
+		t.Fatalf("TestContext: %v", err)
+	}
+	if out != "hi" {
+		t.Errorf("TestContext output = %q, want hi", out)
 	}
 }
 

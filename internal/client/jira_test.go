@@ -67,6 +67,112 @@ func TestBuildSprintJQLTypeExcludesOpenSprints(t *testing.T) {
 	}
 }
 
+func TestBuildSprintJQLEscapesSpecialCharacters(t *testing.T) {
+	jql := BuildSprintJQL(`A"B`, 0, []string{`C\D`, "Story"})
+	for _, want := range []string{`project = "A\"B"`, `issuetype in ("C\\D","Story")`} {
+		if !strings.Contains(jql, want) {
+			t.Errorf("JQL %q does not contain %q", jql, want)
+		}
+	}
+	if strings.Contains(jql, "A\"B\"") {
+		t.Errorf("JQL %q must not inject unescaped quote", jql)
+	}
+}
+
+func TestBuildSprintJQLPreservesNonASCII(t *testing.T) {
+	jql := BuildSprintJQL("PÉROD", 0, []string{"Bug"})
+	if !strings.Contains(jql, "PÉROD") {
+		t.Errorf("JQL %q should preserve non-ASCII project name", jql)
+	}
+	if strings.Contains(jql, "\\u") {
+		t.Errorf("JQL %q must not %q-mangle non-ASCII (Go %%q bug)", jql, `\u`)
+	}
+}
+
+func TestJiraClientRetriesOn429(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			io.WriteString(w, `{"errorMessages":["Rate limited"]}`)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, `{"transitions":[]}`)
+	}))
+	defer srv.Close()
+
+	// Use a long client timeout; the 1s Retry-After sleep is what we wait for.
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	_, err := c.FetchTransitions("PROJ", "1")
+	if err != nil {
+		t.Fatalf("FetchTransitions after retry: %v", err)
+	}
+	if attempts != 2 {
+		t.Errorf("attempts = %d, want 2 (one retry)", attempts)
+	}
+}
+
+func TestJiraClientRetryExhaustion(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"errorMessages":["boom"]}`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	_, err := c.FetchTransitions("PROJ", "1")
+	if err == nil {
+		t.Fatal("expected error after retries exhausted")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("err = %v, want 500 mention", err)
+	}
+	if attempts != maxRetries {
+		t.Errorf("attempts = %d, want %d", attempts, maxRetries)
+	}
+}
+
+func TestJiraClient401Hint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		io.WriteString(w, `{"errorMessages":["Invalid credentials"]}`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	_, err := c.FetchTransitions("PROJ", "1")
+	if err == nil {
+		t.Fatal("expected error on 401")
+	}
+	if !strings.Contains(err.Error(), "api_token") && !strings.Contains(err.Error(), "credentials") {
+		t.Errorf("err should hint at credentials, got %v", err)
+	}
+}
+
+func TestSearchIssuesStopsWithoutToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Always claim there is another page but never provide a token;
+		// the loop must terminate.
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, `{"issues":[{"id":"1","key":"PROJ-1","fields":{}}],"isLast":false}`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	got, err := c.SearchIssues(`project = "PROJ"`, nil)
+	if err != nil {
+		t.Fatalf("SearchIssues: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("got %d issues, want 1 (pagination must stop)", len(got))
+	}
+}
+
 func TestFetchTransitions(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -411,5 +517,32 @@ func TestSearchIssuesRequestsCustomField(t *testing.T) {
 	}
 	if !strings.Contains(gotFields, "customfield_10001") {
 		t.Errorf("fields param = %q, want it to include customfield_10001", gotFields)
+	}
+}
+
+func TestFetchSprintTicketsSprintJQLOverride(t *testing.T) {
+	var gotJQL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/rest/api/3/search/jql") {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		gotJQL = r.URL.Query().Get("jql")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, `{"issues":[],"isLast":true}`)
+	}))
+	defer srv.Close()
+
+	c := NewJiraClient(srv.URL, "e@e.com", "t", 15)
+	if _, err := c.FetchSprintTickets("PROJ", 42, []string{"Story"}, "", `sprint = 9 AND project = "PROJ" AND "Team" = "Core"`); err != nil {
+		t.Fatalf("FetchSprintTickets: %v", err)
+	}
+	for _, want := range []string{`sprint = 9 AND project = "PROJ" AND "Team" = "Core"`, `issuetype in ("Story")`} {
+		if !strings.Contains(gotJQL, want) {
+			t.Errorf("JQL %q missing %q", gotJQL, want)
+		}
+	}
+	if strings.Contains(gotJQL, "openSprints()") || strings.Contains(gotJQL, "currentUser()") {
+		t.Errorf("JQL %q must not include built-in clauses when sprint_jql is set", gotJQL)
 	}
 }

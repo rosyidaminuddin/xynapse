@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,26 +46,107 @@ func (c *JiraClient) applyHeaders(req *http.Request) {
 	req.Header.Set("Accept", "application/json")
 }
 
-func (c *JiraClient) do(req *http.Request) (*http.Response, error) {
-	slog.Debug("jira request", "method", req.Method, "url", req.URL.String())
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	slog.Debug("jira response", "status", resp.StatusCode)
+// Retry configuration for transient Jira failures.
+const (
+	maxRetries     = 3
+	retryBaseDelay = time.Second
+)
 
-	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
-		body, err := io.ReadAll(resp.Body)
+// retryableStatus reports whether the status warrants a retry: rate limited or
+// a transient server error.
+func retryableStatus(code int) bool {
+	switch code {
+	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
+}
+
+// cloneRequest returns a fresh copy of req that can be sent again, rebuilding
+// its body via GetBody (available whenever the body was a bytes.Reader,
+// bytes.Buffer, or strings.Reader). The returned copy is independent of the
+// consumed original.
+func cloneRequest(req *http.Request) (*http.Request, error) {
+	body := req.Body
+	if req.GetBody != nil {
+		b, err := req.GetBody()
 		if err != nil {
-			resp.Body.Close()
 			return nil, err
 		}
-		resp.Body.Close()
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-		slog.Debug("jira response body", "body", string(body))
+		body = b
 	}
+	clone := req.Clone(context.Background())
+	clone.Body = body
+	if body != nil {
+		clone.ContentLength = req.ContentLength
+	}
+	return clone, nil
+}
 
-	return resp, nil
+// retryDelay computes the sleep before the next attempt: the Retry-After
+// header when present, otherwise exponential backoff from retryBaseDelay.
+func retryDelay(resp *http.Response, attempt int) time.Duration {
+	if v := resp.Header.Get("Retry-After"); v != "" {
+		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
+			return time.Duration(secs) * time.Second
+		}
+	}
+	d := retryBaseDelay << attempt
+	if d < retryBaseDelay {
+		d = retryBaseDelay
+	}
+	return d
+}
+
+func (c *JiraClient) do(req *http.Request) (*http.Response, error) {
+	attempt := 0
+	for {
+		slog.Debug("jira request", "method", req.Method, "url", req.URL.String(), "attempt", attempt)
+		sendReq := req
+		var err error
+		if attempt > 0 {
+			sendReq, err = cloneRequest(req)
+			if err != nil {
+				return nil, fmt.Errorf("jira request rebuild failed: %w", err)
+			}
+		}
+		resp, err := c.httpClient.Do(sendReq)
+		if err != nil {
+			return nil, err
+		}
+		slog.Debug("jira response", "status", resp.StatusCode, "attempt", attempt)
+
+		if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				resp.Body.Close()
+				return nil, err
+			}
+			resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(body))
+			slog.Debug("jira response body", "body", string(body))
+		}
+
+		if !retryableStatus(resp.StatusCode) || attempt >= maxRetries-1 {
+			return resp, nil
+		}
+
+		// Drain and close so the connection can be reused on the next attempt.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		slog.Debug("retrying jira request", "status", resp.StatusCode, "attempt", attempt, "next_in", retryDelay(resp, attempt))
+		time.Sleep(retryDelay(resp, attempt))
+		attempt++
+	}
+}
+
+// apiError formats a Jira API error, adding a credentials hint on 401.
+func apiError(statusCode int, body string) error {
+	msg := fmt.Sprintf("jira api error (%d): %s", statusCode, body)
+	if statusCode == http.StatusUnauthorized {
+		msg += " (check jira.email / jira.api_token in ~/.config/xynapse/config.yaml or the JIRA_EMAIL/JIRA_API_TOKEN environment variables)"
+	}
+	return errors.New(msg)
 }
 
 func (c *JiraClient) FetchTicket(project string, ticketNum string, acceptanceCriteriaField string) (*models.Ticket, error) {
@@ -84,7 +167,7 @@ func (c *JiraClient) FetchTicket(project string, ticketNum string, acceptanceCri
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+		return nil, apiError(resp.StatusCode, string(body))
 	}
 
 	slog.Debug("decoding issue", "key", issueKey)
@@ -125,7 +208,7 @@ func (c *JiraClient) FetchTransitions(project, ticketNum string) ([]Transition, 
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+		return nil, apiError(resp.StatusCode, string(body))
 	}
 
 	var result struct {
@@ -184,7 +267,7 @@ func (c *JiraClient) TransitionTicket(project, ticketNum, transitionID string) e
 
 	if resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+		return apiError(resp.StatusCode, string(body))
 	}
 	return nil
 }
@@ -218,7 +301,7 @@ func (c *JiraClient) AddComment(project, ticketNum, body string) error {
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+		return apiError(resp.StatusCode, string(body))
 	}
 	return nil
 }
@@ -277,7 +360,7 @@ func (c *JiraClient) SearchUsers(query string) ([]JiraUser, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+		return nil, apiError(resp.StatusCode, string(body))
 	}
 
 	var raw []struct {
@@ -339,7 +422,7 @@ func (c *JiraClient) SetAssignee(project, ticketNum, accountID string, unassign 
 
 	if resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+		return apiError(resp.StatusCode, string(body))
 	}
 	return nil
 }
@@ -363,7 +446,7 @@ func (c *JiraClient) FetchActiveSprint(boardID string) (*models.Sprint, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+		return nil, apiError(resp.StatusCode, string(body))
 	}
 
 	var result struct {
@@ -381,17 +464,30 @@ func (c *JiraClient) FetchActiveSprint(boardID string) (*models.Sprint, error) {
 	return nil, fmt.Errorf("no active sprint found for board %s", boardID)
 }
 
+// jqlString renders s as a double-quoted JQL string literal. JQL uses
+// backslash escapes only for \" and \\; Go's %q is not JQL-compatible because
+// it also mangles non-ASCII and other characters.
+func jqlString(s string) string {
+	return `"` + escapeJQL(s) + `"`
+}
+
+// escapeJQL escapes the two characters JQL treats specially inside a
+// double-quoted string literal: backslash and double quote.
+func escapeJQL(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), `"`, `\"`)
+}
+
 // BuildSprintJQL constructs the JQL query for the current active sprint of the
 // authenticated user, optionally scoped to the given sprint and issue types.
 func BuildSprintJQL(project string, sprintID int, types []string) string {
-	jql := fmt.Sprintf("project = %q AND sprint in openSprints() AND assignee = currentUser()", project)
+	jql := fmt.Sprintf("project = %s AND sprint in openSprints() AND assignee = currentUser()", jqlString(project))
 	if sprintID > 0 {
-		jql = fmt.Sprintf("project = %q AND sprint = %d AND assignee = currentUser()", project, sprintID)
+		jql = fmt.Sprintf("project = %s AND sprint = %d AND assignee = currentUser()", jqlString(project), sprintID)
 	}
 	if len(types) > 0 {
 		quoted := make([]string, len(types))
 		for i, t := range types {
-			quoted[i] = fmt.Sprintf("%q", t)
+			quoted[i] = jqlString(t)
 		}
 		jql += fmt.Sprintf(" AND issuetype in (%s)", strings.Join(quoted, ","))
 	}
@@ -438,7 +534,7 @@ func (c *JiraClient) SearchIssues(jql string, extraFields []string) ([]models.Ji
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			return nil, fmt.Errorf("jira api error (%d): %s", resp.StatusCode, string(body))
+			return nil, apiError(resp.StatusCode, string(body))
 		}
 
 		var result struct {
@@ -457,6 +553,12 @@ func (c *JiraClient) SearchIssues(jql string, extraFields []string) ([]models.Ji
 		if result.IsLast {
 			break
 		}
+		// A server that omits nextPageToken while claiming more pages would
+		// otherwise loop forever; bail out instead.
+		if result.NextPageToken == "" {
+			slog.Warn("jira search ended without a nextPageToken while isLast=false; stopping pagination")
+			break
+		}
 		nextPageToken = result.NextPageToken
 	}
 
@@ -465,9 +567,19 @@ func (c *JiraClient) SearchIssues(jql string, extraFields []string) ([]models.Ji
 
 // FetchSprintTickets fetches all issues in the current active sprint assigned to the
 // authenticated user, optionally filtered by issue type(s). acceptanceCriteriaField,
-// when non-empty, is requested and stored on each ticket.
-func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []string, acceptanceCriteriaField string) ([]*models.Ticket, error) {
-	jql := BuildSprintJQL(project, sprintID, types)
+// when non-empty, is requested and stored on each ticket. sprintJQL, when non-empty,
+// fully overrides the built-in sprint query (for projects with a custom sprint scheme).
+func (c *JiraClient) FetchSprintTickets(project string, sprintID int, types []string, acceptanceCriteriaField string, sprintJQL string) ([]*models.Ticket, error) {
+	jql := sprintJQL
+	if jql == "" {
+		jql = BuildSprintJQL(project, sprintID, types)
+	} else if len(types) > 0 {
+		quoted := make([]string, len(types))
+		for i, t := range types {
+			quoted[i] = jqlString(t)
+		}
+		jql += fmt.Sprintf(" AND issuetype in (%s)", strings.Join(quoted, ","))
+	}
 
 	var extraFields []string
 	if acceptanceCriteriaField != "" {

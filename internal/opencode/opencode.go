@@ -3,6 +3,7 @@ package opencode
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
+
+	"xynapse/internal/env"
+	"xynapse/internal/proc"
 )
 
 // Options configures a single `opencode run` invocation.
@@ -19,6 +24,9 @@ type Options struct {
 	Model       string // optional provider/model override
 	AutoApprove bool   // pass --auto so the agent can act without prompting
 	Prompt      string // the message to run
+	// Timeout cancels the run when it exceeds this duration; zero means no
+	// timeout (the process runs until opencode exits).
+	Timeout time.Duration
 	// Stream, when non-nil, enables live mode: tool activity (bash commands,
 	// file edits, reads, etc.) is written here as opencode executes it, and
 	// opencode's own stderr is forwarded to os.Stderr. Assistant text is NOT
@@ -64,23 +72,55 @@ func Run(opts Options) (string, error) {
 	args = append(args, opts.Prompt)
 
 	cmd := exec.Command(bin, args...)
-	cmd.Env = os.Environ()
+	cmd.Env = env.SanitizedEnv()
 
-	if opts.Stream == nil {
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			msg := strings.TrimSpace(stderr.String())
-			if msg == "" {
-				msg = strings.TrimSpace(stdout.String())
-			}
-			return "", fmt.Errorf("opencode run failed: %w: %s", err, truncate(msg, 500))
-		}
-		return stdout.String(), nil
+	var cancel context.CancelFunc
+	if opts.Timeout > 0 {
+		var ctx context.Context
+		ctx, cancel = context.WithTimeout(context.Background(), opts.Timeout)
+		proc.ConfigureGroup(cmd)
+		go watchTimeout(ctx, cmd)
+	}
+	if cancel != nil {
+		defer cancel()
 	}
 
-	return runStreaming(cmd, opts.Stream)
+	strm := opts.Stream
+	if strm == nil {
+		return runBuffered(cmd)
+	}
+	return runStreaming(cmd, strm)
+}
+
+// watchTimeout kills the command (and its process group when supported) once
+// the context fires, so grandchildren holding our pipes close them and
+// cmd.Wait returns instead of hanging forever.
+func watchTimeout(ctx context.Context, cmd *exec.Cmd) {
+	<-ctx.Done()
+	if cmd.Process == nil {
+		return
+	}
+	proc.KillGroup(cmd)
+	_ = cmd.Process.Kill()
+}
+
+// runBuffered runs cmd capturing stdout/stderr entirely in memory.
+func runBuffered(cmd *exec.Cmd) (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("opencode run failed to start: %w", err)
+	}
+	err := cmd.Wait()
+	msg := strings.TrimSpace(stderr.String())
+	if msg == "" {
+		msg = strings.TrimSpace(stdout.String())
+	}
+	if err != nil {
+		return "", fmt.Errorf("opencode run failed: %w: %s", err, truncate(msg, 500))
+	}
+	return stdout.String(), nil
 }
 
 // runStreaming runs the already-configured command, capturing stdout while

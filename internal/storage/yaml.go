@@ -30,6 +30,43 @@ func (s *Storage) ensureDir(dirPath string) error {
 	return os.MkdirAll(dirPath, 0o755)
 }
 
+// writeFileAtomic writes data to path via a temp file in the same directory
+// followed by an atomic rename, so a crash mid-write never leaves a truncated
+// or corrupt file at path.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() {
+		tmp.Close()
+		os.Remove(tmpName)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
+}
+
 // Helper: Constructs ticket file path (e.g. ./tickets/PROJ/PROJ-123.yml)
 func (s *Storage) getTicketPath(project, ticketKey string) string {
 	key := strings.ToUpper(ticketKey)
@@ -83,7 +120,7 @@ func (s *Storage) WriteTicket(ticket *models.Ticket) error {
 		return fmt.Errorf("failed to marshal ticket YAML: %w", err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+	if err := writeFileAtomic(filePath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write ticket file %s: %w", filePath, err)
 	}
 
@@ -137,7 +174,7 @@ func (s *Storage) WriteSprintManifest(project string, sprintID int, sprintName s
 		return fmt.Errorf("failed to marshal sprint manifest YAML: %w", err)
 	}
 
-	if err := os.WriteFile(manifestPath, data, 0o644); err != nil {
+	if err := writeFileAtomic(manifestPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write sprint manifest file: %w", err)
 	}
 
@@ -225,8 +262,9 @@ func (s *Storage) Clear(project string) (int, error) {
 	return removed + plansRemoved, nil
 }
 
-// clearPlans removes saved implementation plans. When project is empty the
-// whole plans directory is removed; otherwise only <PROJECT>-*.md files.
+// clearPlans removes saved implementation plans and implement reports. When
+// project is empty the whole plans directory is removed; otherwise only
+// <PROJECT>-*.md files.
 func (s *Storage) clearPlans(project string) (int, error) {
 	plansDir := filepath.Join(s.base, "plans")
 	entries, err := os.ReadDir(plansDir)

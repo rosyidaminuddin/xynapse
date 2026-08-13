@@ -73,7 +73,7 @@ func Finalize(cfg *config.Config, ticketRef, dir, base, message string, createPR
 			Base:  base,
 			Head:  branch,
 			Title: title,
-			Body:  prBody(cfg, ticket),
+			Body:  prBody(cfg, s, ticket),
 		})
 		if err != nil {
 			return err
@@ -88,12 +88,26 @@ func Finalize(cfg *config.Config, ticketRef, dir, base, message string, createPR
 }
 
 // prBody builds the pull request description: a "Closes <KEY>" trailer plus a
-// link back to the ticket on Jira.
-func prBody(cfg *config.Config, t *models.Ticket) string {
+// link back to the ticket on Jira, followed by the acceptance-criteria
+// checklist from the saved implement report when one exists.
+func prBody(cfg *config.Config, s *storage.Storage, t *models.Ticket) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Closes %s", t.Key)
 	if cfg.Jira.URL != "" {
 		fmt.Fprintf(&b, "\n\n%s", strings.TrimRight(cfg.Jira.URL, "/")+"/browse/"+t.Key)
+	}
+
+	if report, ok := s.ReadReport(t.Project, t.Key); ok {
+		if results, found := parseACResults(report); found && len(results) > 0 {
+			fmt.Fprint(&b, "\n\n## Checklist\n")
+			for _, r := range results {
+				mark := " "
+				if r.Pass {
+					mark = "x"
+				}
+				fmt.Fprintf(&b, "\n- [%s] %s", mark, r.Text)
+			}
+		}
 	}
 	return b.String()
 }

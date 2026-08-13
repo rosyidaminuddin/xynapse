@@ -22,8 +22,10 @@ skill) and asks you to execute it in the current repository.
    code, adapt sensibly and note the deviation.
 4. Implement the changes step by step, in order. Run the relevant tests and
    build/lint commands for the project as you go.
-5. Verify each acceptance criterion from the plan. Report which pass and which
-   do not.
+5. Verify each acceptance criterion from the plan. The plan's Acceptance
+   criteria section uses the ticket's own ACs verbatim when they exist, so
+   this means checking the implementation against those real ACs. Report
+   which pass and which do not. Do not finish until every AC passes.
 
 ## Rules
 
@@ -36,6 +38,9 @@ skill) and asks you to execute it in the current repository.
   focused on the ticket.
 - If a step is ambiguous, prefer the interpretation recorded in the plan's
   "Design considerations".
+- Each acceptance criterion in the plan is a hard definition of done — treat
+  the ticket's ACs as requirements, not suggestions. Implement enough to make
+  every one verifiably pass.
 - Run tests after the implementation. If tests fail, fix the failures before
   finishing.
 - Do NOT commit or push. Leave changes in the working tree for the user to
@@ -49,3 +54,21 @@ End with a markdown summary containing:
 - **Deviations** — anything you changed relative to the plan, and why.
 - **Verification** — what tests/lints you ran and their results.
 - **Remaining** — any acceptance criteria not yet met and what is missing.
+
+The summary MUST end with a section that lists every acceptance criterion as a
+task-list checkbox, one per line. This drives the `xynapse drive` acceptance
+gate and the PR checklist, so the heading and markers are exact:
+
+```markdown
+## AC Results
+
+- [x] criterion one, exactly as stated
+
+- [ ] criterion two, exactly as stated
+```
+
+Basic criteria (things every implementation must do — builds, tests, no new
+warnings) can be condensed into the checkbox line without a bullet, e.g.
+`- [x] code builds and all tests pass`. Leave a criterion `[ ]` (unchecked)
+whenever you have not verified it, and keep that item in **Remaining**; do not
+mark anything `[x]` you did not actually verify.

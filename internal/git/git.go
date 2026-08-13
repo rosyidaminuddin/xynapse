@@ -2,10 +2,37 @@ package git
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
+
+	"xynapse/internal/env"
+	"xynapse/internal/proc"
 )
+
+// runCommand builds a `sh -c command` exec.Cmd. The returned command is not
+// started; the caller sets Dir/Env/Stdout/Stderr. When timeout > 0 the command
+// is cancelled — killing its whole process group on unix — once it expires.
+// The caller must call cancel() (returned as ok) when done.
+func runCommand(command string, timeout time.Duration) (*exec.Cmd, func(), bool) {
+	if timeout <= 0 {
+		return exec.Command("sh", "-c", command), nil, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	if proc.ConfigureGroup(cmd) {
+		cmd.Cancel = func() error {
+			proc.KillGroup(cmd)
+			return cmd.Process.Kill()
+		}
+	}
+	// WaitDelay bounds how long Wait waits for the process to exit after
+	// being killed; prevents a hang if it ignores SIGKILL.
+	cmd.WaitDelay = 2 * time.Second
+	return cmd, cancel, true
+}
 
 // Git runs git commands inside a repository directory.
 type Git struct {
@@ -133,13 +160,25 @@ func (g *Git) Push(branch string) error {
 // Test runs an arbitrary command (e.g. "go test ./...") via sh -c in the
 // repository directory and returns its combined output. A non-zero exit is
 // reported as an error; the output is returned either way so callers can
-// surface it. An empty command is an error.
+// surface it. An empty command is an error. The child inherits the parent
+// environment minus secret-like variables (see env.SanitizedEnv).
 func (g *Git) Test(command string) (string, error) {
+	return g.TestContext(command, 0)
+}
+
+// TestContext is Test with an optional timeout. A timeout > 0 cancels the
+// command when it is exceeded, killing it (and its children on unix). A zero
+// timeout runs without a deadline.
+func (g *Git) TestContext(command string, timeout time.Duration) (string, error) {
 	if strings.TrimSpace(command) == "" {
 		return "", fmt.Errorf("empty command")
 	}
-	cmd := exec.Command("sh", "-c", command)
+	cmd, cancel, ok := runCommand(command, timeout)
+	if ok {
+		defer cancel()
+	}
 	cmd.Dir = g.dir
+	cmd.Env = env.SanitizedEnv()
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf

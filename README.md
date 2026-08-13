@@ -39,6 +39,7 @@ jira:
   email: "you@example.com"
   api_token: ""          # or set via JIRA_API_TOKEN
   timeout_seconds: 15
+  sprint_jql: ""         # optional: custom JQL that fully replaces the sprint query (see config.yaml)
   custom_fields:         # map of logical names to Jira custom field ids
     acceptance_criteria: "customfield_10001"  # ticket's acceptance criteria (ADF or text), stored in ticket YAML
 
@@ -57,6 +58,7 @@ opencode:
   bin: "opencode"        # path or name of the opencode binary on PATH
   model: ""              # optional provider/model override, e.g. "anthropic/claude-sonnet-4"
   auto_approve: false    # pass --auto to opencode run (implement may edit files without prompting)
+  timeout_seconds: 0     # cancel an opencode run after this many seconds; 0 disables
 
 git:
   dir: ""                            # target repo directory for plan/implement/prepare/finalize/get-sprint (default: cwd)
@@ -74,6 +76,9 @@ workflow:
   target_branch: "develop"           # PR merge target (defaults to base_branch)
   comment_template: "PR: {url}"      # comment posted on the ticket after merge; {key}/{summary}/{url}/{branch}
   autopilot: false                   # behave as if --yes was always passed
+  command_timeout_seconds: 0         # cancel test/lint commands after this many seconds; 0 disables
+  poll_interval_seconds: 30          # how often drive --wait polls the PR for a merge
+  poll_timeout_seconds: 1800         # max time drive --wait waits for a merge before giving up
 
 projects:
   MERADIO:
@@ -277,13 +282,15 @@ defaulting to cwd); outside a repo they show `?`.
 - `--dry-run` — print the steps `drive` would run without executing them
 - `--step <name>` — run a single `drive` step (branch, plan, implement, test, lint, finalize, ticket)
 - `--from <name>` / `--to <name>` — run an inclusive range of `drive` steps
+- `--wait` — after **finalize**, poll until the PR merges, then run the **ticket** step automatically
+- `--wait-timeout <dur>` — max time `--wait` polls for a merge (defaults to `workflow.poll_timeout_seconds`)
 
 ### Implementation plans
 
 `plan` and `implement` delegate to the [opencode](https://opencode.ai) CLI and two skills shipped in this repo (`.opencode/skills/`, synced to `~/.config/opencode/skills/` by `install.sh`):
 
 - `xynapse plan <ref>` — fetches/refreshes the ticket, runs the `analyze-ticket` skill to produce a step-by-step implementation plan, and saves it to `<storage>/plans/<KEY>.md`.
-- `xynapse implement <ref>` — runs the `implement-plan` skill in the target repo to execute the saved plan. The agent leaves changes in the working tree; it does not commit or push.
+- `xynapse implement <ref>` — runs the `implement-plan` skill in the target repo to execute the saved plan. The agent leaves changes in the working tree; it does not commit or push. Its final summary is saved as `<storage>/plans/<KEY>.report.md` for the `drive` AC gate and PR checklist.
 - `xynapse show-plan <ref>` — displays a ticket's saved plan from `<storage>/plans/<KEY>.md` as styled markdown (works without a cached ticket).
 - `xynapse status <ref> [--set <status>]` — show or update a plan's status.
 
@@ -320,6 +327,24 @@ While opencode works, its activity is streamed live to stderr — each tool call
 
 Review the plan before executing. Skills require the opencode CLI to be installed and authenticated. Markdown output (`plan` plans, `implement` reports) is styled in the terminal with [glamour](https://github.com/charmbracelet/glamour) (the rendering engine behind [glow](https://github.com/charmbracelet/glow)); when piped or redirected, the raw markdown is passed through unchanged.
 
+### Acceptance criteria results
+
+The `implement-plan` skill ends its report with a task-list section that lists every acceptance criterion of the ticket, one checkbox per line:
+
+```markdown
+## AC Results
+
+- [x] criterion one
+- [ ] criterion two
+```
+
+`xynapse implement` saves that report to `<storage>/plans/<KEY>.report.md`. Two downstream consumers use it:
+
+- `xynapse drive` **gates finalize** on it: unless every criterion is marked `[x]`, finalize refuses to commit and reruns `implement` is required.
+- `xynapse finalize --pr` echoes the criteria as a `## Checklist` in the pull request body.
+
+Leave a criterion unchecked when you are not sure it is met; `drive` will refuse to finalize until it is verified.
+
 ### Driving a ticket
 
 `xynapse drive <ref>` runs a single ticket through the whole pipeline, recording each completed step per ticket so interrupted runs resume where they stopped:
@@ -331,9 +356,9 @@ branch -> plan -> implement -> test -> lint -> finalize -> ticket
 - **branch** — creates/checks out the feature branch (from `workflow.base_branch`, or `--base`).
 - **plan** — generates the plan if none exists or it is stale. A stale plan prompts for confirmation; `--force` or `--yes` regenerates without asking.
 - **implement** — runs the saved plan via opencode in the repo. Its confirmation prompts are answered interactively, or with suggested defaults under `--yes`.
-- **test / lint** — runs `workflow.test_command` / `workflow.lint_command` in the repo. A failure records the step and blocks **finalize** until fixed; `--force` bypasses the gate. Empty `test_command` skips the step.
-- **finalize** — commits, pushes, and opens a PR against `workflow.target_branch` (falls back to `base_branch`). An explicit `--base` overrides both.
-- **ticket** — waits until the PR is **merged**, then assigns the ticket, transitions it to `workflow.test_status` (or `--status`), and posts the `workflow.comment_template` comment (default `PR: {url}\n\nCloses {key}`). Until the PR merges, drive stops here and tells you to re-run once it is merged.
+- **test / lint** — runs `workflow.test_command` / `workflow.lint_command` in the repo. A failure records the step and blocks **finalize** until fixed; `--force` bypasses the gate. Empty `test_command` skips the step. Each command is cancelled after `workflow.command_timeout_seconds` when set (0 disables).
+- **finalize** — commits, pushes, and opens a PR against `workflow.target_branch` (falls back to `base_branch`). An explicit `--base` overrides both. Before finalizing it **gates on the acceptance criteria**: it reads `<storage>/plans/<KEY>.report.md` and fails unless every `[x]`/`[ ]` line under its `## AC Results` section is checked. The PR body carries a `## Checklist` built from those same results.
+- **ticket** — waits until the PR is **merged**, then assigns the ticket, transitions it to `workflow.test_status` (or `--status`), and posts the `workflow.comment_template` comment (default `PR: {url}\n\nCloses {key}`). Until the PR merges, drive stops here and tells you to re-run once it is merged. Pass `--wait` to have drive poll the PR (every `workflow.poll_interval_seconds`, up to `workflow.poll_timeout_seconds` or `--wait-timeout`) and continue into **ticket** on its own once the merge lands.
 
 ```sh
 # Autopilot: confirmations use suggested defaults, no prompts
@@ -351,12 +376,19 @@ branch -> plan -> implement -> test -> lint -> finalize -> ticket
 
 # Preview the steps without executing anything
 ./bin/xynapse drive MERADIO-123 --dry-run
+
+# Wait for the PR to merge, then run the ticket step automatically
+./bin/xynapse drive MERADIO-123 --wait
+
+# Same, but give up polling after 45 minutes
+./bin/xynapse drive MERADIO-123 --wait --wait-timeout 45m
 ```
 
 Notes:
 
 - Steps are recorded under `<storage>/drive/<PROJECT>/<KEY>.yml`. `clear-cache` removes them with the rest of the cache.
 - The **ticket** step only runs after the PR merges; a re-run checks the current PR state via `gh` before touching Jira. Until then the drive state stays open for that step.
+- The **finalize** AC gate reads the implement report saved by the `implement` step (the agent's `## AC Results` checklist, see below). With no report present the gate fails with a message pointing at the missing report; rerun `implement` so the agent emits one.
 - `--yes` is the equivalent of setting `workflow.autopilot: true` in config. The **assignee** prompt and **comment** prompt are skipped in autopilot mode (current assignee is kept, template comment is posted).
 - Drive refuses to run outside a git working tree. Configure `git.dir` (or pass `--dir`) so it targets the right repo.
 
@@ -365,7 +397,7 @@ Notes:
 `prepare` and `finalize` wrap the git/gh flow around a ticket:
 
 - `xynapse prepare <ref> -b main` — creates a feature branch from the base branch. The branch name is the `git.branch_template` expanded with ticket placeholders (default `feature-v5/{Key}`); a `git.branch_templates.<TYPE>` entry overrides it for that issue type (e.g. `Bug: "fix-v5/{Key}"`), and `--template` overrides everything. It refuses to branch from a dirty working tree unless `--force` is given, and idempotently checks out the branch if it already exists.
-- `xynapse finalize <ref> [-b main] [--pr]` — `git add -A` + `git commit -m "<KEY>: <summary>"` (override with `--message`), then `git push -u origin <current branch>`. With `--pr` (requires `--base`) it opens a pull request via `gh` with a `Closes <KEY>` trailer and a link back to the ticket. It refuses to run on the base branch, and marks the ticket's plan `done` on success.
+- `xynapse finalize <ref> [-b main] [--pr]` — `git add -A` + `git commit -m "<KEY>: <summary>"` (override with `--message`), then `git push -u origin <current branch>`. With `--pr` (requires `--base`) it opens a pull request via `gh` with a `Closes <KEY>` trailer, a link back to the ticket, and — when an implement report with `## AC Results` exists — a `## Checklist` of the checked criteria. It refuses to run on the base branch, and marks the ticket's plan `done` on success.
 
 Branch template placeholders:
 
@@ -385,7 +417,7 @@ When cached data is older than `expiration.hours`, `get-ticket` and `get-sprint`
 
 ### Storage layout
 
-Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`. When `board_id` is configured, `pull-sprint` looks up the active sprint via the Jira Agile API and stores its `sprint_id` and `sprint_name` in the manifest. Each ticket keeps both the raw ADF description JSON (`description`) and a flattened plain-text copy (`description_text`). Implementation plans from `plan` are saved under `storage/plans/<KEY>.md`, with their lifecycle `status` stored in the file's YAML frontmatter.
+Fetched tickets are stored under `storage/<PROJECT>/<KEY>.yml`, with sprint ticket lists tracked in `storage/<PROJECT>/sprints/current.yml`. When `board_id` is configured, `pull-sprint` looks up the active sprint via the Jira Agile API and stores its `sprint_id` and `sprint_name` in the manifest. Each ticket keeps both the raw ADF description JSON (`description`) and a flattened plain-text copy (`description_text`). Implementation plans from `plan` are saved under `storage/plans/<KEY>.md`, with their lifecycle `status` stored in the file's YAML frontmatter; implement reports are saved alongside as `storage/plans/<KEY>.report.md`.
 
 ### Jira status transitions
 

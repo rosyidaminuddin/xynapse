@@ -97,7 +97,7 @@ func (s *Storage) writePlan(path string, meta map[string]string, body string) er
 	out.Write(front)
 	out.WriteString("---\n")
 	out.WriteString(body)
-	return os.WriteFile(path, []byte(out.String()), 0o644)
+	return writeFileAtomic(path, []byte(out.String()), 0o644)
 }
 
 // splitFrontmatter splits plan content into a markdown body and a metadata

@@ -330,18 +330,22 @@ func newDriveCmd(cfg *config.Config) *cobra.Command {
 			step, _ := cmd.Flags().GetString("step")
 			from, _ := cmd.Flags().GetString("from")
 			to, _ := cmd.Flags().GetString("to")
+			wait, _ := cmd.Flags().GetBool("wait")
+			waitTimeout, _ := cmd.Flags().GetDuration("wait-timeout")
 			return command.Drive(cfg, command.DriveOptions{
-				TicketRef: args[0],
-				Dir:       dir,
-				Model:     model,
-				Base:      base,
-				Status:    status,
-				Auto:      auto,
-				Force:     force,
-				DryRun:    dryRun,
-				Step:      step,
-				From:      from,
-				To:        to,
+				TicketRef:   args[0],
+				Dir:         dir,
+				Model:       model,
+				Base:        base,
+				Status:      status,
+				Auto:        auto,
+				Force:       force,
+				DryRun:      dryRun,
+				Step:        step,
+				From:        from,
+				To:          to,
+				Wait:        wait,
+				WaitTimeout: waitTimeout,
 			})
 		},
 	}
@@ -355,6 +359,8 @@ func newDriveCmd(cfg *config.Config) *cobra.Command {
 	cmd.Flags().String("step", "", "run a single step (branch, plan, implement, test, lint, finalize, ticket)")
 	cmd.Flags().String("from", "", "first step in the range to run")
 	cmd.Flags().String("to", "", "last step in the range to run")
+	cmd.Flags().Bool("wait", false, "after finalize, poll until the PR merges, then run the ticket step automatically")
+	cmd.Flags().Duration("wait-timeout", 0, "max time --wait polls for a merge (default: workflow.poll_timeout_seconds)")
 	return cmd
 }
 

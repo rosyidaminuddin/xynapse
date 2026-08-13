@@ -70,7 +70,7 @@ func (s *Storage) WriteDriveState(project, ticketKey string, st DriveState) erro
 	if err != nil {
 		return fmt.Errorf("failed to marshal drive state: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := writeFileAtomic(path, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write drive state %s: %w", path, err)
 	}
 	return nil

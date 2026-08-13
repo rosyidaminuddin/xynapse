@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // writeFakeBin creates an executable shell script on PATH that records its
@@ -136,6 +137,52 @@ exit 3
 	}
 	if !strings.Contains(err.Error(), "boom") {
 		t.Errorf("error should include stderr, got %v", err)
+	}
+}
+
+func TestRunFiltersSecretsFromChildEnv(t *testing.T) {
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, "child-env.txt")
+	writeFakeBin(t, dir, `#!/bin/sh
+env | sort > "$FAKE_ENV_FILE"
+`)
+	t.Setenv("FAKE_ENV_FILE", envFile)
+	t.Setenv("JIRA_API_TOKEN", "super-secret")
+	t.Setenv("JIRA_EMAIL", "me@corp.com")
+
+	if _, err := Run(Options{Bin: "opencode", Prompt: "x"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatalf("read child env: %v", err)
+	}
+	got := string(data)
+	if strings.Contains(got, "JIRA_API_TOKEN") {
+		t.Errorf("JIRA_API_TOKEN leaked into child env:\n%s", got)
+	}
+	if !strings.Contains(got, "JIRA_EMAIL") {
+		t.Errorf("JIRA_EMAIL should be kept in child env:\n%s", got)
+	}
+}
+
+func TestRunTimeoutKillsHangingProcess(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeBin(t, dir, `#!/bin/sh
+sleep 30
+`)
+	opts := Options{Bin: "opencode", Prompt: "x", Timeout: 200 * time.Millisecond}
+	start := time.Now()
+	_, err := Run(opts)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("run should have been killed by timeout, took %v", elapsed)
+	}
+	if !strings.Contains(err.Error(), "signal: killed") && !strings.Contains(err.Error(), "context deadline exceeded") && !strings.Contains(err.Error(), "killed") {
+		t.Errorf("error should mention kill/deadline, got %v", err)
 	}
 }
 

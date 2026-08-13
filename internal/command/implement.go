@@ -59,6 +59,7 @@ func Implement(cfg *config.Config, ticketRef, planPath, dir, model string, force
 		Dir:         dir,
 		Model:       model,
 		AutoApprove: cfg.Opencode.AutoApprove,
+		Timeout:     cfg.Opencode.Timeout(),
 		Prompt:      prompt,
 		Stream:      os.Stderr,
 	})
@@ -66,6 +67,13 @@ func Implement(cfg *config.Config, ticketRef, planPath, dir, model string, force
 		return err
 	}
 	report := opencode.ExtractText(out)
+
+	// Persist the implement report so drive can verify acceptance-criteria
+	// results and gate finalize on them.
+	if err := s.WriteReport(project, number, report); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not save implement report: %v\n", err)
+	}
+
 	if err := RenderMD(os.Stdout, report); err != nil {
 		return fmt.Errorf("failed to render report: %w", err)
 	}
