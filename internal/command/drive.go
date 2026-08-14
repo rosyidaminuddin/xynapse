@@ -35,9 +35,11 @@ type DriveOptions struct {
 	TicketRef string
 	Dir       string
 	Model     string
-	// Base overrides the PR target branch (workflow.target_branch, else
-	// workflow.base_branch).
+	// Base is the base branch from which the feature/fix branch is created.
 	Base string
+	// Target is the PR target branch (where the PR is merged to).
+	// When empty, defaults to workflow.target_branch, then workflow.base_branch.
+	Target string
 	// Status overrides the workflow.test_status the ticket moves to.
 	Status string
 	// Auto enables autopilot: confirmations use their suggested defaults and
@@ -219,10 +221,13 @@ func derivedBranch(cfg *config.Config, ticket *models.Ticket) (string, error) {
 	return expandBranch(cfg, ticket, "")
 }
 
-// drivePRTarget resolves the PR base branch: --base, else
+// drivePRTarget resolves the PR target branch: --target, else --base, else
 // workflow.target_branch, else workflow.base_branch. Empty means no PR target
 // is configured.
-func drivePRTarget(cfg *config.Config, flagBase string) string {
+func drivePRTarget(cfg *config.Config, flagBase string, flagTarget string) string {
+	if flagTarget != "" {
+		return flagTarget
+	}
 	if flagBase != "" {
 		return flagBase
 	}
@@ -346,7 +351,7 @@ func driveFinalizeStep(ctx *driveCtx, ticket *models.Ticket) (bool, error) {
 		return false, fmt.Errorf("cannot finalize: %s; pass --force to override", msg)
 	}
 
-	target := drivePRTarget(ctx.cfg, ctx.opts.Base)
+	target := drivePRTarget(ctx.cfg, ctx.opts.Base, ctx.opts.Target)
 	if target == "" {
 		return false, fmt.Errorf("no PR target branch configured; set workflow.target_branch (or base_branch), or pass --base")
 	}

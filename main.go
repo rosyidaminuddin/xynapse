@@ -323,6 +323,7 @@ func newDriveCmd(cfg *config.Config) *cobra.Command {
 				model = cfg.Opencode.Model
 			}
 			base, _ := cmd.Flags().GetString("base")
+			target, _ := cmd.Flags().GetString("target")
 			status, _ := cmd.Flags().GetString("status")
 			auto, _ := cmd.Flags().GetBool("yes")
 			force, _ := cmd.Flags().GetBool("force")
@@ -332,12 +333,13 @@ func newDriveCmd(cfg *config.Config) *cobra.Command {
 			to, _ := cmd.Flags().GetString("to")
 			wait, _ := cmd.Flags().GetBool("wait")
 			waitTimeout, _ := cmd.Flags().GetDuration("wait-timeout")
-			return command.Drive(cfg, command.DriveOptions{
-				TicketRef:   args[0],
-				Dir:         dir,
-				Model:       model,
-				Base:        base,
-				Status:      status,
+return command.Drive(cfg, command.DriveOptions{
+			TicketRef:   args[0],
+			Dir:         dir,
+			Model:       model,
+			Base:        base,
+			Target:      target,
+			Status:      status,
 				Auto:        auto,
 				Force:       force,
 				DryRun:      dryRun,
@@ -351,7 +353,8 @@ func newDriveCmd(cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().String("dir", "", "target repo directory (default: config git.dir, then current working directory)")
 	cmd.Flags().String("model", "", "override the opencode model")
-	cmd.Flags().StringP("base", "b", "", "PR target branch (default: config workflow.target_branch, then base_branch)")
+	cmd.Flags().StringP("base", "b", "", "base branch to create the feature branch from")
+	cmd.Flags().String("target", "", "PR target branch (default: config workflow.target_branch, then base_branch)")
 	cmd.Flags().String("status", "", "Jira status to move the ticket to after the PR merges (default: config workflow.test_status)")
 	cmd.Flags().BoolP("yes", "y", false, "autopilot: answer confirmations with suggested defaults and skip prompts")
 	cmd.Flags().BoolP("force", "f", false, "bypass failed tests/lint and the stale-plan prompt")
