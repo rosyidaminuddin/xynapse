@@ -78,15 +78,15 @@ func TestSelectedStepsErrors(t *testing.T) {
 
 func TestDrivePRTarget(t *testing.T) {
 	cfg := driveTestConfig()
-	if got := drivePRTarget(cfg, ""); got != "develop" {
+	if got := drivePRTarget(cfg, "", ""); got != "develop" {
 		t.Errorf("drivePRTarget = %q, want develop (target_branch)", got)
 	}
-	if got := drivePRTarget(cfg, "main"); got != "main" {
+	if got := drivePRTarget(cfg, "main", ""); got != "main" {
 		t.Errorf("drivePRTarget(flag) = %q, want main", got)
 	}
 	// Fallback to base_branch when target_branch is empty.
 	cfg.Workflow.TargetBranch = ""
-	if got := drivePRTarget(cfg, ""); got != "main" {
+	if got := drivePRTarget(cfg, "", ""); got != "main" {
 		t.Errorf("drivePRTarget = %q, want main (base_branch fallback)", got)
 	}
 }
