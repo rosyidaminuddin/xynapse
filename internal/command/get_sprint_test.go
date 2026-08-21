@@ -91,7 +91,7 @@ func TestGetSprintGitStatus(t *testing.T) {
 	cfg.Defaults.OutputFormat = "json"
 
 	out := captureStdout(t, func() {
-		if err := GetSprint(cfg, nil, false); err != nil {
+		if err := GetSprint(cfg, nil, nil, false); err != nil {
 			t.Fatalf("GetSprint: %v", err)
 		}
 	})
@@ -118,7 +118,7 @@ func TestGetSprintTableColumns(t *testing.T) {
 	cfg := sprintConfig(base, t.TempDir())
 
 	out := captureStdout(t, func() {
-		if err := GetSprint(cfg, nil, false); err != nil {
+		if err := GetSprint(cfg, nil, nil, false); err != nil {
 			t.Fatalf("GetSprint: %v", err)
 		}
 	})
@@ -157,7 +157,7 @@ func TestGetSprintFromOutsideRepoDir(t *testing.T) {
 	cfg.Defaults.OutputFormat = "json"
 
 	out := captureStdout(t, func() {
-		if err := GetSprint(cfg, nil, false); err != nil {
+		if err := GetSprint(cfg, nil, nil, false); err != nil {
 			t.Fatalf("GetSprint: %v", err)
 		}
 	})
@@ -175,7 +175,7 @@ func TestGetSprintNotARepo(t *testing.T) {
 	cfg.Defaults.OutputFormat = "json"
 
 	out := captureStdout(t, func() {
-		if err := GetSprint(cfg, nil, false); err != nil {
+		if err := GetSprint(cfg, nil, nil, false); err != nil {
 			t.Fatalf("GetSprint: %v", err)
 		}
 	})
