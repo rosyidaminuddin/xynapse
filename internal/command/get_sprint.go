@@ -28,7 +28,7 @@ type gitSnapshot struct {
 	prStates   map[string]git.PRInfo
 }
 
-func GetSprint(cfg *config.Config, types []string, unplanned bool) error {
+func GetSprint(cfg *config.Config, types []string, statuses []string, unplanned bool) error {
 	s := storage.NewStorage(cfg.Storage.Base)
 
 	logStep(cfg.Verbose, "reading sprint manifest for project %s from %s", cfg.Defaults.Project, cfg.Storage.Base)
@@ -53,6 +53,11 @@ func GetSprint(cfg *config.Config, types []string, unplanned bool) error {
 	if len(types) > 0 {
 		tickets = filterByType(tickets, types)
 		logStep(cfg.Verbose, "filtered to %d ticket(s) of type(s) %v", len(tickets), types)
+	}
+
+	if len(statuses) > 0 {
+		tickets = filterByStatus(tickets, statuses)
+		logStep(cfg.Verbose, "filtered to %d ticket(s) with status(es) %v", len(tickets), statuses)
 	}
 
 	var snap gitSnapshot
@@ -236,6 +241,27 @@ func filterByType(tickets []*models.Ticket, types []string) []*models.Ticket {
 	filtered := make([]*models.Ticket, 0, len(tickets))
 	for _, ticket := range tickets {
 		if allowed[strings.ToLower(ticket.Type)] {
+			filtered = append(filtered, ticket)
+		}
+	}
+	return filtered
+}
+
+// filterByStatus keeps only tickets whose status matches one of the given statuses
+// (case-insensitive). An empty status list returns all tickets unchanged.
+func filterByStatus(tickets []*models.Ticket, statuses []string) []*models.Ticket {
+	if len(statuses) == 0 {
+		return tickets
+	}
+
+	allowed := make(map[string]bool, len(statuses))
+	for _, s := range statuses {
+		allowed[strings.ToLower(strings.TrimSpace(s))] = true
+	}
+
+	filtered := make([]*models.Ticket, 0, len(tickets))
+	for _, ticket := range tickets {
+		if allowed[strings.ToLower(ticket.Status)] {
 			filtered = append(filtered, ticket)
 		}
 	}
